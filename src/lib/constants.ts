@@ -1,20 +1,42 @@
 // 選択肢の定義を集約
 // 値の追加・変更はここだけで行う
 
+// グループ階層定義
+// lv2 は lv1 に、lv3 は lv2 に紐づく
 export const GROUP_LV1_OPTIONS = [
-  "メディア",
-  "SaaS",
-  "カウンター",
-  "フェア",
+  "サービス開発",
+  "保守",
 ] as const;
 
 export const GROUP_LV2_OPTIONS = [
-  // 必要に応じて追加
+  { value: "SaaS", parent: "サービス開発" },
+  { value: "カウンター・フェア", parent: "サービス開発" },
+  { value: "メディア", parent: "サービス開発" },
+  { value: "保守", parent: "保守" },
 ] as const;
 
 export const GROUP_LV3_OPTIONS = [
-  // 必要に応じて追加
+  { value: "工務店向け", parent: "SaaS" },
+  { value: "不動産事業者向け", parent: "SaaS" },
+  { value: "集客", parent: "カウンター・フェア" },
+  { value: "カウンター相談", parent: "カウンター・フェア" },
+  { value: "フェア当日", parent: "カウンター・フェア" },
+  { value: "フォロー", parent: "カウンター・フェア" },
+  { value: "周辺事務", parent: "カウンター・フェア" },
+  { value: "イエタテ", parent: "メディア" },
+  { value: "オウチーノ", parent: "メディア" },
+  { value: "保守", parent: "保守" },
 ] as const;
+
+// lv1 を選択したら lv2 の選択肢を絞る
+export function getGroupLv2Options(lv1: string) {
+  return GROUP_LV2_OPTIONS.filter((o) => o.parent === lv1);
+}
+
+// lv2 を選択したら lv3 の選択肢を絞る
+export function getGroupLv3Options(lv2: string) {
+  return GROUP_LV3_OPTIONS.filter((o) => o.parent === lv2);
+}
 
 export const STATUS_OPTIONS = [
   "未着手",

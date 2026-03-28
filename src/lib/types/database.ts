@@ -58,6 +58,7 @@ export type Database = {
           group_lv3: string | null;
           priority: number;
           target_date: string | null;
+          target_date_tentative: boolean;
           director_id: string | null;
           engineer_id: string | null;
           designer_id: string | null;
@@ -76,6 +77,7 @@ export type Database = {
           group_lv3?: string | null;
           priority?: number;
           target_date?: string | null;
+          target_date_tentative?: boolean;
           director_id?: string | null;
           engineer_id?: string | null;
           designer_id?: string | null;
@@ -92,6 +94,7 @@ export type Database = {
           group_lv3?: string | null;
           priority?: number;
           target_date?: string | null;
+          target_date_tentative?: boolean;
           director_id?: string | null;
           engineer_id?: string | null;
           designer_id?: string | null;
