@@ -13,10 +13,10 @@ export function Header() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-10 border-b border-black/5 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-white/10 bg-[#0e1620]/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center px-5 py-2">
         <div className="flex items-center gap-5">
-          <h1 className="text-sm font-semibold tracking-tight text-foreground">WBS</h1>
+          <h1 className="text-sm font-semibold tracking-tight text-white/90">WBS</h1>
           <nav className="flex gap-0.5">
             {NAV_ITEMS.map((item) => (
               <Link
@@ -25,8 +25,8 @@ export function Header() {
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                   pathname === item.href
-                    ? "bg-black/5 text-foreground"
-                    : "text-black/40 hover:text-black/70"
+                    ? "bg-white/10 text-white"
+                    : "text-white/40 hover:text-white/70"
                 )}
               >
                 {item.label}

@@ -4,6 +4,9 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
+import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
+import { PhasePanel } from "@/components/phase-panel";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
@@ -47,21 +50,27 @@ const statusStyle = (status: string) => {
     case "調査":
       return "bg-orange-50 text-orange-600";
     default:
-      return "bg-black/[0.03] text-black/60";
+      return "bg-white/10 text-black/60";
   }
 };
 
 // ドラッグ可能な行
 function SortableRow({
   project,
+  isExpanded,
+  onToggle,
   onEdit,
   onDuplicate,
   onDelete,
+  members,
 }: {
   project: Project;
+  isExpanded: boolean;
+  onToggle: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  members: Member[];
 }) {
   const {
     attributes,
@@ -78,11 +87,12 @@ function SortableRow({
   };
 
   return (
+    <>
     <tr
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-black/5 transition-colors hover:bg-black/[0.02]",
+        "border-b border-black/5 transition-colors hover:bg-blue-50/70",
         isDragging && "relative z-10 bg-white shadow-lg shadow-black/10"
       )}
     >
@@ -100,23 +110,31 @@ function SortableRow({
         {project.priority}
       </td>
       <td className="w-24 px-2 py-2 text-xs text-black/60">
-        {project.group_lv2 ?? project.group_lv1 ?? "-"}
+        <span className="flex items-center gap-1">
+          {project.group_lv2 && <GroupLv2Icon value={project.group_lv2} size={12} />}
+          {project.group_lv2 ?? project.group_lv1 ?? "-"}
+        </span>
       </td>
-      <td className="px-2 py-2 text-sm text-foreground">{project.title}</td>
-      <td className="w-28 px-2 py-2 text-sm text-black/60">
+      <td className="px-2 py-2 text-sm text-foreground cursor-pointer" onClick={onToggle}>
+        <span className="flex items-center gap-1">
+          {isExpanded ? <ChevronDown size={14} className="text-black/30" /> : <ChevronRight size={14} className="text-black/30" />}
+          {project.title}
+        </span>
+      </td>
+      <td className="w-28 px-2 py-2 text-sm text-foreground">
         {project.target_date ? (
           project.target_date_tentative
-            ? <span className="text-xs">{project.target_date} 仮</span>
+            ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
             : project.target_date
         ) : "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.director?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.designer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.engineer?.display_name ?? "-"}
       </td>
       <td className="w-20 px-2 py-2">
@@ -129,47 +147,67 @@ function SortableRow({
       </td>
       <td className="px-2 py-2">
         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">編集</button>
-          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">複製</button>
+          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-black/5 hover:text-white/60">編集</button>
+          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-black/5 hover:text-white/60">複製</button>
           <button onClick={onDelete} className="rounded px-1.5 py-0.5 text-[11px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400">削除</button>
         </div>
       </td>
     </tr>
+    {isExpanded && (
+      <tr>
+        <td colSpan={11} className="p-0">
+          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
 // 通常の行（事業別ビュー用、D&Dなし）
 function ProjectRow({
   project,
+  isExpanded,
+  onToggle,
   onEdit,
   onDuplicate,
   onDelete,
+  members,
 }: {
   project: Project;
+  isExpanded: boolean;
+  onToggle: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  members: Member[];
 }) {
   return (
-    <tr className="border-b border-black/5 transition-colors hover:bg-black/[0.02]">
+    <>
+    <tr className="border-b border-black/5 transition-colors hover:bg-blue-50/70">
       <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
         {project.priority}
       </td>
-      <td className="px-2 py-2 text-sm text-foreground">{project.title}</td>
-      <td className="w-28 px-2 py-2 text-sm text-black/60">
+      <td className="px-2 py-2 text-sm text-foreground cursor-pointer" onClick={onToggle}>
+        <span className="flex items-center gap-1">
+          {isExpanded ? <ChevronDown size={14} className="text-black/30" /> : <ChevronRight size={14} className="text-black/30" />}
+          {project.title}
+        </span>
+      </td>
+      <td className="w-28 px-2 py-2 text-sm text-foreground">
         {project.target_date ? (
           project.target_date_tentative
-            ? <span className="text-xs">{project.target_date} 仮</span>
+            ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
             : project.target_date
         ) : "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.director?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.designer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-black/60">
+      <td className="w-20 px-2 py-2 text-sm text-foreground">
         {project.engineer?.display_name ?? "-"}
       </td>
       <td className="w-20 px-2 py-2">
@@ -188,6 +226,14 @@ function ProjectRow({
         </div>
       </td>
     </tr>
+    {isExpanded && (
+      <tr>
+        <td colSpan={9} className="p-0">
+          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -196,6 +242,7 @@ export function ProjectList({ initialProjects, members }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("priority");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -373,14 +420,14 @@ export function ProjectList({ initialProjects, members }: Props) {
       {/* ヘッダー + ビュー切替 */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex gap-0.5 rounded-md bg-black/[0.03] p-0.5">
+          <div className="flex gap-0.5 rounded-md bg-white/10 p-0.5">
             <button
               onClick={() => setViewMode("priority")}
               className={cn(
                 "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
                 viewMode === "priority"
-                  ? "bg-black/5 text-foreground"
-                  : "text-black/60 hover:text-black/60"
+                  ? "bg-white/15 text-white"
+                  : "text-white/40 hover:text-white/60"
               )}
             >
               優先度順
@@ -390,8 +437,8 @@ export function ProjectList({ initialProjects, members }: Props) {
               className={cn(
                 "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
                 viewMode === "group"
-                  ? "bg-black/5 text-foreground"
-                  : "text-black/60 hover:text-black/60"
+                  ? "bg-white/15 text-white"
+                  : "text-white/40 hover:text-white/60"
               )}
             >
               事業別
@@ -400,7 +447,7 @@ export function ProjectList({ initialProjects, members }: Props) {
         </div>
         <button
           onClick={() => setDialogOpen(true)}
-          className="rounded-md bg-[#5e5ce6] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#4e4cd6] cursor-pointer"
+          className="rounded-md bg-[#4a9eff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] cursor-pointer"
         >
           + 新規作成
         </button>
@@ -449,9 +496,12 @@ export function ProjectList({ initialProjects, members }: Props) {
                       <SortableRow
                         key={project.id}
                         project={project}
+                        isExpanded={expandedProjectId === project.id}
+                        onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
                         onEdit={() => setEditingProject(project)}
                         onDuplicate={() => handleDuplicate(project)}
                         onDelete={() => handleDelete(project.id)}
+                        members={members}
                       />
                     ))
                   )}
@@ -475,6 +525,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <div className="flex items-center gap-2 border-b border-black/5 bg-black/[0.01] px-4 py-2.5">
                   <span className="text-[11px] text-black/60">{group.lv1}</span>
                   {group.lv1 && <span className="text-[11px] text-black/30">/</span>}
+                  <GroupLv2Icon value={group.lv2} size={16} />
                   <h3 className="text-base font-bold text-black/80">{group.lv2}</h3>
                   <span className="text-[11px] text-black/40">
                     {totalItems}件
@@ -483,6 +534,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 {group.lv3Groups.map((lv3Group) => (
                   <div key={lv3Group.name}>
                     <div className="flex items-center gap-2 border-t-2 border-black/8 bg-black/[0.02] px-4 py-2.5 first:border-t-0">
+                      <GroupLv3Icon value={lv3Group.name} />
                       <span className="text-sm font-semibold text-black/60">
                         {lv3Group.name}
                       </span>
@@ -514,9 +566,12 @@ export function ProjectList({ initialProjects, members }: Props) {
                             <ProjectRow
                               key={project.id}
                               project={project}
+                              isExpanded={expandedProjectId === project.id}
+                              onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
                               onEdit={() => setEditingProject(project)}
                               onDuplicate={() => handleDuplicate(project)}
                               onDelete={() => handleDelete(project.id)}
+                              members={members}
                             />
                           ))}
                         </tbody>
@@ -531,19 +586,19 @@ export function ProjectList({ initialProjects, members }: Props) {
       )}
 
       {/* フッター */}
-      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-black/5 bg-white/90 backdrop-blur">
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/10 bg-[#0e1620]/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <p className="text-xs text-black/60">{projects.length}件</p>
+          <p className="text-xs text-white/40">{projects.length}件</p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              className="rounded px-2.5 py-1 text-xs text-black/60 transition-colors hover:bg-black/5 hover:text-black/60 cursor-pointer"
+              className="rounded px-2.5 py-1 text-xs text-white/40 transition-colors hover:bg-white/10 hover:text-white/60 cursor-pointer"
             >
               Top
             </button>
             <button
               onClick={() => setDialogOpen(true)}
-              className="rounded-md bg-[#5e5ce6] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#4e4cd6] cursor-pointer"
+              className="rounded-md bg-[#4a9eff] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] cursor-pointer"
             >
               + 新規作成
             </button>

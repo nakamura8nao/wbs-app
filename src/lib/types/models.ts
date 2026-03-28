@@ -31,6 +31,38 @@ export type Project = {
   designer?: Member | null;
 };
 
+export type Phase = {
+  id: string;
+  project_id: string;
+  name: string;
+  assignee_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string;
+  sort_order: number;
+  traditional_hours: number | null;
+  ai_target_hours: number | null;
+  actual_hours: number | null;
+  created_at: string;
+  updated_at: string;
+  // JOINで取得
+  assignee?: Member | null;
+  // 依存関係
+  dependencies?: { depends_on_phase_id: string }[];
+};
+
+export type PhaseFormData = {
+  name: string;
+  assignee_id: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  traditional_hours: string;
+  ai_target_hours: string;
+  actual_hours: string;
+  depends_on_phase_id: string;
+};
+
 export type ProjectFormData = {
   title: string;
   group_lv1: string;
