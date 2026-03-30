@@ -179,7 +179,6 @@ export function PhasePanel({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("このフェーズを削除しますか？")) return;
     await supabase.from("phases").delete().eq("id", id);
     await loadPhases();
   };
@@ -317,7 +316,7 @@ export function PhasePanel({
   );
 }
 
-function PhaseForm({
+export function PhaseForm({
   form,
   setForm,
   members,

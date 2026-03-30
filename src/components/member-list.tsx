@@ -100,10 +100,10 @@ export function MemberList({ initialMembers }: { initialMembers: Member[] }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-black/60">メンバー管理</h2>
+        <h2 className="text-sm font-medium text-white">メンバー管理</h2>
         <button
           onClick={openCreate}
-          className="rounded-md bg-[#5e5ce6] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#4e4cd6] cursor-pointer"
+          className="rounded-md bg-[#4a9eff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] cursor-pointer"
         >
           + メンバー追加
         </button>
@@ -129,7 +129,7 @@ export function MemberList({ initialMembers }: { initialMembers: Member[] }) {
               members.map((member) => (
                 <tr
                   key={member.id}
-                  className="border-b border-black/5 transition-colors hover:bg-black/[0.02]"
+                  className="border-b border-black/5 transition-colors hover:bg-blue-50/70"
                 >
                   <td className="px-3 py-2 text-sm text-foreground">
                     {member.display_name}
@@ -176,7 +176,7 @@ export function MemberList({ initialMembers }: { initialMembers: Member[] }) {
                 }
                 placeholder="例: 中村"
                 required
-                className="h-8 w-full rounded-md border border-black/10 bg-white px-2.5 text-sm text-foreground outline-none placeholder:text-black/25 focus:border-[#5e5ce6]/50 focus:ring-1 focus:ring-[#5e5ce6]/20"
+                className="h-8 w-full rounded-md border border-black/10 bg-white px-2.5 text-sm text-foreground outline-none placeholder:text-black/25 focus:border-[#4a9eff]/50 focus:ring-1 focus:ring-[#4a9eff]/20"
               />
             </div>
             <div className="space-y-1.5">
@@ -186,7 +186,7 @@ export function MemberList({ initialMembers }: { initialMembers: Member[] }) {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, role: e.target.value }))
                 }
-                className="h-8 w-full rounded-md border border-black/10 bg-white px-2.5 text-sm text-foreground outline-none cursor-pointer focus:border-[#5e5ce6]/50 focus:ring-1 focus:ring-[#5e5ce6]/20"
+                className="h-8 w-full rounded-md border border-black/10 bg-white px-2.5 text-sm text-foreground outline-none cursor-pointer focus:border-[#4a9eff]/50 focus:ring-1 focus:ring-[#4a9eff]/20"
               >
                 <option value="">選択してください</option>
                 {MEMBER_ROLE_OPTIONS.map((opt) => (
@@ -207,7 +207,7 @@ export function MemberList({ initialMembers }: { initialMembers: Member[] }) {
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-md bg-[#5e5ce6] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#4e4cd6] disabled:opacity-50 cursor-pointer"
+                className="rounded-md bg-[#4a9eff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? "保存中..." : "保存"}
               </button>

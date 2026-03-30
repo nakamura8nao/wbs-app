@@ -4,9 +4,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Project, Member, Phase } from "@/lib/types/models";
+import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
 import { ProgressIcon } from "@/components/progress-icon";
+import { PhaseForm } from "@/components/phase-panel";
+import { MemberSelect } from "@/components/member-select";
 
 type GanttPhase = Phase & {
   assignee?: Member | null;
@@ -20,22 +22,33 @@ const DAY_WIDTH = 32;
 const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 48;
 
+// 時刻を 00:00:00 に正規化して日付だけの比較を正確にする
+function normalizeDate(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
+  const d = normalizeDate(date);
   d.setDate(d.getDate() + days);
   return d;
 }
 
 function diffDays(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  const na = normalizeDate(a);
+  const nb = normalizeDate(b);
+  return Math.round((nb.getTime() - na.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function parseDate(s: string): Date {
-  return new Date(s + "T00:00:00");
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 // 今日を含む前後の範囲を計算
@@ -312,7 +325,11 @@ export function GanttChart({
   members: Member[];
 }) {
   const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(initialProjects.map((p) => p.id)));
+  const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<PhaseFormData | null>(null);
+  const [addingForProjectId, setAddingForProjectId] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState<PhaseFormData | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -366,6 +383,103 @@ export function GanttChart({
     await loadAllPhases();
   };
 
+  const startEditPhase = (phase: GanttPhase) => {
+    setEditingPhaseId(phase.id);
+    setEditForm({
+      name: phase.name,
+      assignee_id: phase.assignee_id ?? "",
+      start_date: phase.start_date ?? "",
+      end_date: phase.end_date ?? "",
+      status: phase.status,
+      traditional_hours: phase.traditional_hours?.toString() ?? "",
+      ai_target_hours: phase.ai_target_hours?.toString() ?? "",
+      actual_hours: phase.actual_hours?.toString() ?? "",
+      depends_on_phase_id: phase.dependencies?.[0]?.depends_on_phase_id ?? "",
+    });
+  };
+
+  const handleSavePhase = async () => {
+    if (!editingPhaseId || !editForm) return;
+
+    await supabase
+      .from("phases")
+      .update({
+        name: editForm.name,
+        assignee_id: editForm.assignee_id || null,
+        start_date: editForm.start_date || null,
+        end_date: editForm.end_date || null,
+        status: editForm.status,
+        traditional_hours: editForm.traditional_hours ? parseFloat(editForm.traditional_hours) : null,
+        ai_target_hours: editForm.ai_target_hours ? parseFloat(editForm.ai_target_hours) : null,
+        actual_hours: editForm.actual_hours ? parseFloat(editForm.actual_hours) : null,
+      } as never)
+      .eq("id", editingPhaseId);
+
+    // 依存関係を更新
+    await supabase.from("phase_dependencies").delete().eq("phase_id", editingPhaseId);
+    if (editForm.depends_on_phase_id) {
+      await supabase.from("phase_dependencies").insert({
+        phase_id: editingPhaseId,
+        depends_on_phase_id: editForm.depends_on_phase_id,
+      } as never);
+    }
+
+    setEditingPhaseId(null);
+    setEditForm(null);
+    await loadAllPhases();
+  };
+
+  const cancelEditPhase = () => {
+    setEditingPhaseId(null);
+    setEditForm(null);
+  };
+
+  const startAddPhase = (projectId: string) => {
+    setAddingForProjectId(projectId);
+    setEditingPhaseId(null);
+    setEditForm(null);
+    setAddForm({
+      name: "",
+      assignee_id: "",
+      start_date: "",
+      end_date: "",
+      status: "未着手",
+      traditional_hours: "",
+      ai_target_hours: "",
+      actual_hours: "",
+      depends_on_phase_id: "",
+    });
+  };
+
+  const handleAddPhase = async () => {
+    if (!addingForProjectId || !addForm || !addForm.name.trim()) return;
+
+    const proj = ganttProjects.find((p) => p.id === addingForProjectId);
+    const maxOrder = proj ? proj.phases.reduce((max, p) => Math.max(max, p.sort_order), 0) : 0;
+
+    await supabase.from("phases").insert({
+      project_id: addingForProjectId,
+      name: addForm.name,
+      assignee_id: addForm.assignee_id || null,
+      start_date: addForm.start_date || null,
+      end_date: addForm.end_date || null,
+      status: addForm.status,
+      sort_order: maxOrder + 1,
+      traditional_hours: addForm.traditional_hours ? parseFloat(addForm.traditional_hours) : null,
+      ai_target_hours: addForm.ai_target_hours ? parseFloat(addForm.ai_target_hours) : null,
+      actual_hours: addForm.actual_hours ? parseFloat(addForm.actual_hours) : null,
+    } as never);
+
+    setAddingForProjectId(null);
+    setAddForm(null);
+    await loadAllPhases();
+  };
+
+  const cancelAddPhase = () => {
+    setAddingForProjectId(null);
+    setAddForm(null);
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -406,36 +520,80 @@ export function GanttChart({
             施策 / フェーズ
           </div>
           {/* 行ラベル */}
-          {rows.map((row, i) => (
-            <div
-              key={row.phase?.id ?? row.project.id}
-              className={cn(
-                "flex items-center border-b border-black/5 px-3",
-                row.type === "project" ? "hover:bg-blue-50/70 cursor-pointer" : "pl-8"
-              )}
-              style={{ height: ROW_HEIGHT }}
-              onClick={row.type === "project" ? () => toggleExpand(row.project.id) : undefined}
-            >
-              {row.type === "project" ? (
-                <span className="flex items-center gap-1 text-sm font-medium text-black/80 min-w-0">
-                  <span className="shrink-0">{expandedIds.has(row.project.id) ? <ChevronDown size={13} className="text-black/40" /> : <ChevronRight size={13} className="text-black/40" />}</span>
-                  <span className="truncate">{row.project.title}</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 text-sm text-black/60 min-w-0">
-                  <span className="shrink-0">
-                    <ProgressIcon value={row.phase!.status === "完了" ? "done" : row.phase!.status === "進行中" ? "active" : "paused"} size={13} />
-                  </span>
-                  <span className="truncate">
-                    {row.phase!.name}
-                    {row.phase!.assignee?.display_name && (
-                      <span className="ml-1.5 text-black/40">({row.phase!.assignee.display_name})</span>
-                    )}
-                  </span>
-                </span>
-              )}
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const isEditing = row.type === "phase" && row.phase && editingPhaseId === row.phase.id;
+
+            return (
+              <div key={row.phase?.id ?? row.project.id}>
+                <div
+                  className={cn(
+                    "flex items-center border-b border-black/5 px-3",
+                    row.type === "project" ? "group/row hover:bg-blue-50/70 cursor-pointer" : "pl-8 hover:bg-blue-50/50 cursor-pointer",
+                    isEditing && "bg-blue-50/70"
+                  )}
+                  style={{ height: ROW_HEIGHT }}
+                  onClick={
+                    row.type === "project"
+                      ? () => toggleExpand(row.project.id)
+                      : () => {
+                          if (isEditing) cancelEditPhase();
+                          else startEditPhase(row.phase!);
+                        }
+                  }
+                >
+                  {row.type === "project" ? (
+                    <span className="flex items-center gap-1 text-sm font-medium text-black/80 min-w-0">
+                      <span className="shrink-0">{expandedIds.has(row.project.id) ? <ChevronDown size={13} className="text-black/40" /> : <ChevronRight size={13} className="text-black/40" />}</span>
+                      <span className="flex-1 truncate">{row.project.title}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!expandedIds.has(row.project.id)) toggleExpand(row.project.id);
+                          startAddPhase(row.project.id);
+                        }}
+                        className="shrink-0 opacity-0 group-hover/row:opacity-100 rounded px-1 text-[11px] text-[#4a9eff] hover:bg-[#4a9eff]/10"
+                        title="フェーズを追加"
+                      >
+                        +
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-sm text-black/60 min-w-0">
+                      <span className="shrink-0">
+                        <ProgressIcon value={row.phase!.status === "完了" ? "done" : row.phase!.status === "進行中" ? "active" : "paused"} size={13} />
+                      </span>
+                      <span className="truncate">
+                        {row.phase!.name}
+                        {row.phase!.assignee?.display_name && (
+                          <span className="ml-1.5 text-black/40">({row.phase!.assignee.display_name})</span>
+                        )}
+                      </span>
+                    </span>
+                  )}
+                </div>
+                {isEditing && editForm && (
+                  <>
+                  <div className="fixed inset-0 z-20 bg-black/20" onClick={cancelEditPhase} />
+                  <div
+                    className="fixed left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl border border-black/10 rounded-lg shadow-xl bg-white px-4 py-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="mb-2 text-xs font-semibold text-black/50">フェーズ編集</div>
+                    <PhaseForm
+                      form={editForm}
+                      setForm={(fn) => setEditForm((prev) => prev ? fn(prev) : prev)}
+                      members={members}
+                      phases={row.project.phases.filter((p) => p.id !== row.phase!.id)}
+                      onSave={handleSavePhase}
+                      onCancel={cancelEditPhase}
+                      isEdit
+                    />
+                  </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* 右タイムライン */}
@@ -514,6 +672,27 @@ export function GanttChart({
           </div>
         </div>
       </div>
+
+      {/* 新規追加モーダル */}
+      {addingForProjectId && addForm && (
+        <>
+          <div className="fixed inset-0 z-20 bg-black/20" onClick={cancelAddPhase} />
+          <div
+            className="fixed left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl border border-black/10 rounded-lg shadow-xl bg-white px-4 py-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-xs font-semibold text-black/50">フェーズ追加</div>
+            <PhaseForm
+              form={addForm}
+              setForm={(fn) => setAddForm((prev) => prev ? fn(prev) : prev)}
+              members={members}
+              phases={ganttProjects.find((p) => p.id === addingForProjectId)?.phases ?? []}
+              onSave={handleAddPhase}
+              onCancel={cancelAddPhase}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

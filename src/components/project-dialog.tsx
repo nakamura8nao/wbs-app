@@ -328,18 +328,21 @@ export function ProjectDialog({
           </FormField>
 
           {/* ボタン */}
-          <div className="flex justify-end gap-3 border-t pt-4">
-            <Button
+          <div className="flex justify-end gap-3 border-t border-black/10 pt-4">
+            <button
               type="button"
-              variant="outline"
-              size="lg"
               onClick={() => onOpenChange(false)}
+              className="rounded-md px-4 py-2 text-sm text-black/50 transition-colors hover:bg-black/5 hover:text-black/70 cursor-pointer"
             >
               キャンセル
-            </Button>
-            <Button type="submit" size="lg" disabled={submitting}>
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-md bg-[#4a9eff] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#3a8eef] disabled:opacity-50 cursor-pointer"
+            >
               {submitting ? "保存中..." : "保存"}
-            </Button>
+            </button>
           </div>
         </form>
       </DialogContent>

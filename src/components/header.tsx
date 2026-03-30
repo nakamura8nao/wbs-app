@@ -14,7 +14,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-10 border-b border-white/10 bg-[#0e1620]/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center px-5 py-2">
+      <div className="mx-auto flex max-w-[1400px] items-center px-5 py-2">
         <div className="flex items-center gap-5">
           <h1 className="text-sm font-semibold tracking-tight text-white/90">WBS</h1>
           <nav className="flex gap-0.5">

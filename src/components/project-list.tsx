@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useMemo, memo, lazy, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { GanttChart } from "@/components/gantt-chart";
+const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
@@ -46,8 +46,9 @@ const statusStyle = (status: string) => {
     case "システム":
       return "bg-violet-50 text-violet-600";
     case "要件定義":
-    case "要求定義":
       return "bg-cyan-50 text-cyan-600";
+    case "要求定義":
+      return "bg-pink-50 text-pink-600";
     case "調査":
       return "bg-orange-50 text-orange-600";
     default:
@@ -56,13 +57,14 @@ const statusStyle = (status: string) => {
 };
 
 // ドラッグ可能な行
-function SortableRow({
+const SortableRow = memo(function SortableRow({
   project,
   isExpanded,
   onToggle,
   onEdit,
   onDuplicate,
   onDelete,
+  onTogglePriority,
   members,
 }: {
   project: Project;
@@ -71,6 +73,7 @@ function SortableRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onTogglePriority?: () => void;
   members: Member[];
 }) {
   const {
@@ -108,7 +111,7 @@ function SortableRow({
         </span>
       </td>
       <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
-        {project.priority}
+        {project.priority_undecided ? "-" : project.priority}
       </td>
       <td className="w-24 px-2 py-2 text-xs text-black/60">
         <span className="flex items-center gap-1">
@@ -146,33 +149,42 @@ function SortableRow({
       <td className="w-8 px-1 py-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
       </td>
+      <td className="px-2 py-2 text-[11px] text-foreground whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
+        {project.notes ?? ""}
+      </td>
       <td className="px-2 py-2">
         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-black/5 hover:text-white/60">編集</button>
-          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-black/5 hover:text-white/60">複製</button>
+          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">編集</button>
+          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">複製</button>
+          {onTogglePriority && (
+            <button onClick={onTogglePriority} className="rounded px-1.5 py-0.5 text-[11px] text-orange-400/70 hover:bg-orange-50 hover:text-orange-500">
+              {project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
+            </button>
+          )}
           <button onClick={onDelete} className="rounded px-1.5 py-0.5 text-[11px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400">削除</button>
         </div>
       </td>
     </tr>
     {isExpanded && (
       <tr>
-        <td colSpan={11} className="p-0">
+        <td colSpan={12} className="p-0">
           <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
         </td>
       </tr>
     )}
     </>
   );
-}
+});
 
 // 通常の行（事業別ビュー用、D&Dなし）
-function ProjectRow({
+const ProjectRow = memo(function ProjectRow({
   project,
   isExpanded,
   onToggle,
   onEdit,
   onDuplicate,
   onDelete,
+  hidePriority,
   members,
 }: {
   project: Project;
@@ -181,14 +193,17 @@ function ProjectRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  hidePriority?: boolean;
   members: Member[];
 }) {
   return (
     <>
     <tr className="border-b border-black/5 transition-colors hover:bg-blue-50/70">
-      <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
-        {project.priority}
-      </td>
+      {!hidePriority && (
+        <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
+          {project.priority_undecided ? "-" : project.priority}
+        </td>
+      )}
       <td className="px-2 py-2 text-sm text-foreground cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1">
           {isExpanded ? <ChevronDown size={14} className="text-black/30" /> : <ChevronRight size={14} className="text-black/30" />}
@@ -219,6 +234,9 @@ function ProjectRow({
       <td className="w-8 px-1 py-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
       </td>
+      <td className="px-2 py-2 text-[11px] text-foreground whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
+        {project.notes ?? ""}
+      </td>
       <td className="px-2 py-2">
         <div className="flex gap-0.5 opacity-0 transition-opacity [tr:hover_&]:opacity-100">
           <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">編集</button>
@@ -236,7 +254,7 @@ function ProjectRow({
     )}
     </>
   );
-}
+});
 
 export function ProjectList({ initialProjects, members }: Props) {
   const [projects, setProjects] = useState(initialProjects);
@@ -244,19 +262,47 @@ export function ProjectList({ initialProjects, members }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [filterMemberId, setFilterMemberId] = useState<string>("");
+
+  // メンバーフィルタ
+  const filterProject = useCallback((p: Project) => {
+    if (!filterMemberId) return true;
+    return p.director_id === filterMemberId || p.designer_id === filterMemberId || p.engineer_id === filterMemberId;
+  }, [filterMemberId]);
 
   // 公開済み（完了）とそれ以外を分離
-  const activeProjects = projects.filter((p) => p.status !== "完了");
-  const releasedProjects = [...projects.filter((p) => p.status === "完了")]
-    .sort((a, b) => {
-      // 公開予定日の降順（新しい順）。日付なしは末尾
-      if (!a.target_date && !b.target_date) return 0;
-      if (!a.target_date) return 1;
-      if (!b.target_date) return -1;
-      return b.target_date.localeCompare(a.target_date);
-    });
+  const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
+  const decidedProjects = useMemo(() => activeProjects.filter((p) => !p.priority_undecided), [activeProjects]);
+  const undecidedProjects = useMemo(() => activeProjects.filter((p) => p.priority_undecided), [activeProjects]);
 
-  const supabase = createClient();
+  // 未決定施策をグループ（lv2）順に並べる
+  const undecidedGrouped = useMemo(() => {
+    const groups: { lv2: string; items: Project[] }[] = [];
+    for (const lv2 of GROUP_LV2_OPTIONS) {
+      groups.push({ lv2: lv2.value, items: [] });
+    }
+    groups.push({ lv2: "未分類", items: [] });
+    for (const p of undecidedProjects) {
+      const key = p.group_lv2 ?? "未分類";
+      const group = groups.find((g) => g.lv2 === key);
+      if (group) group.items.push(p);
+      else groups.find((g) => g.lv2 === "未分類")!.items.push(p);
+    }
+    return groups.filter((g) => g.items.length > 0);
+  }, [undecidedProjects]);
+
+  const releasedProjects = useMemo(() =>
+    [...projects.filter((p) => p.status === "完了" && filterProject(p))]
+      .sort((a, b) => {
+        if (!a.target_date && !b.target_date) return 0;
+        if (!a.target_date) return 1;
+        if (!b.target_date) return -1;
+        return b.target_date.localeCompare(a.target_date);
+      }),
+    [projects, filterProject]
+  );
+
+  const supabase = useMemo(() => createClient(), []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -265,7 +311,7 @@ export function ProjectList({ initialProjects, members }: Props) {
     })
   );
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     const { data } = await supabase
       .from("projects")
       .select(`
@@ -276,7 +322,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       `)
       .order("priority", { ascending: true });
     if (data) setProjects(data);
-  };
+  }, [supabase]);
 
   const handleCreate = async (formData: ProjectFormData) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -289,12 +335,13 @@ export function ProjectList({ initialProjects, members }: Props) {
       group_lv2: formData.group_lv2 || null,
       group_lv3: formData.group_lv3 || null,
       priority: formData.priority,
+      priority_undecided: true,
       target_date: formData.target_date || null,
       target_date_tentative: formData.target_date_tentative,
       director_id: formData.director_id || null,
       engineer_id: formData.engineer_id || null,
       designer_id: formData.designer_id || null,
-      status: formData.status,
+      status: formData.progress === "done" ? "完了" : formData.status,
       progress: formData.progress,
       notes: formData.notes || null,
     } as never);
@@ -319,7 +366,7 @@ export function ProjectList({ initialProjects, members }: Props) {
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
         designer_id: formData.designer_id || null,
-        status: formData.status,
+        status: formData.progress === "done" ? "完了" : formData.status,
         progress: formData.progress,
         notes: formData.notes || null,
       } as never)
@@ -342,6 +389,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       group_lv2: project.group_lv2,
       group_lv3: project.group_lv3,
       priority: maxPriority + 1,
+      priority_undecided: true,
       target_date: project.target_date,
       target_date_tentative: project.target_date_tentative,
       director_id: project.director_id,
@@ -362,32 +410,50 @@ export function ProjectList({ initialProjects, members }: Props) {
   };
 
   // D&D完了時：優先順を振り直してDBに保存
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleTogglePriority = async (project: Project) => {
+    const newUndecided = !project.priority_undecided;
+    await supabase
+      .from("projects")
+      .update({ priority_undecided: newUndecided } as never)
+      .eq("id", project.id);
+    await reload();
+  };
+
+  const handleSectionDragEnd = async (event: DragEndEvent, isUndecidedSection: boolean) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = projects.findIndex((p) => p.id === active.id);
-    const newIndex = projects.findIndex((p) => p.id === over.id);
+    const sectionProjects = isUndecidedSection ? [...undecidedProjects] : [...decidedProjects];
+    const oldIndex = sectionProjects.findIndex((p) => p.id === active.id);
+    const newIndex = sectionProjects.findIndex((p) => p.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // ローカルで並び替え
-    const reordered = [...projects];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
+    const [moved] = sectionProjects.splice(oldIndex, 1);
+    sectionProjects.splice(newIndex, 0, moved);
 
-    // 優先順を 1, 2, 3... で振り直す
-    const updated = reordered.map((p, i) => ({ ...p, priority: i + 1 }));
-    setProjects(updated);
+    // 決定済み + 未決定を結合して優先順を振り直し
+    const newDecided = isUndecidedSection ? decidedProjects : sectionProjects;
+    const newUndecided = isUndecidedSection ? sectionProjects : undecidedProjects;
+    const allActive = [...newDecided, ...newUndecided].map((p, i) => ({ ...p, priority: i + 1 }));
 
-    // DBに保存（並列で更新）
-    await Promise.all(
-      updated.map((p) =>
-        supabase
-          .from("projects")
-          .update({ priority: p.priority } as never)
-          .eq("id", p.id)
-      )
-    );
+    const completedProjects = projects.filter((p) => p.status === "完了");
+    setProjects([...allActive, ...completedProjects]);
+
+    // 変更があった行だけ更新
+    const changed = allActive.filter((p, i) => {
+      const orig = [...decidedProjects, ...undecidedProjects][i];
+      return !orig || orig.id !== p.id || orig.priority !== p.priority;
+    });
+    if (changed.length > 0) {
+      await Promise.all(
+        changed.map((p) =>
+          supabase
+            .from("projects")
+            .update({ priority: p.priority } as never)
+            .eq("id", p.id)
+        )
+      );
+    }
   };
 
   // 事業別のグルーピング（lv2 > lv3 の2階層、定義順、空グループも表示）
@@ -460,7 +526,7 @@ export function ProjectList({ initialProjects, members }: Props) {
               className={cn(
                 "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
                 viewMode === "gantt"
-                  ? "bg-white/15 text-foreground"
+                  ? "bg-white/15 text-white"
                   : "text-white/40 hover:text-white/60"
               )}
             >
@@ -471,13 +537,26 @@ export function ProjectList({ initialProjects, members }: Props) {
               className={cn(
                 "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
                 viewMode === "released"
-                  ? "bg-white/15 text-foreground"
+                  ? "bg-white/15 text-white"
                   : "text-white/40 hover:text-white/60"
               )}
             >
               公開済み
             </button>
           </div>
+          {/* メンバーフィルター */}
+          <select
+            value={filterMemberId}
+            onChange={(e) => setFilterMemberId(e.target.value)}
+            className="h-7 rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white/70 outline-none cursor-pointer"
+          >
+            <option value="">全メンバー</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.display_name}{m.role ? ` (${m.role})` : ""}
+              </option>
+            ))}
+          </select>
         </div>
         <button
           onClick={() => setDialogOpen(true)}
@@ -503,30 +582,73 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th className="w-20 px-2 py-2">Eng</th>
                 <th className="w-20 px-2 py-2">状態</th>
                 <th className="w-8 px-1 py-2"></th>
+                <th className="px-2 py-2">備考</th>
                 <th className="w-24 px-2 py-2"></th>
               </tr>
             </thead>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={activeProjects.map((p) => p.id)}
-                strategy={verticalListSortingStrategy}
-              >
+            {activeProjects.length === 0 ? (
+              <tbody>
+                <tr>
+                  <td colSpan={12} className="py-8 text-center text-xs text-black/60">
+                    施策がまだありません。「新規作成」から追加してください。
+                  </td>
+                </tr>
+              </tbody>
+            ) : (
+              <>
+                {/* 決定済みセクション */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleSectionDragEnd(event, false)}
+                >
+                  <SortableContext
+                    items={decidedProjects.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody>
+                      {decidedProjects.map((project) => (
+                        <SortableRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onTogglePriority={() => handleTogglePriority(project)}
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+
+                {/* 区切り線 */}
                 <tbody>
-                  {activeProjects.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="p-0">
+                      <div className="flex items-center gap-3 px-4 py-2 bg-black/[0.03]">
+                        <div className="flex-1 border-t-2 border-dashed border-orange-300/50" />
+                        <span className="text-xs font-medium text-orange-400/70 whitespace-nowrap">優先順位 未決定</span>
+                        <div className="flex-1 border-t-2 border-dashed border-orange-300/50" />
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+
+                {/* 未決定セクション（グループ別） */}
+                {undecidedGrouped.map((group) => (
+                  <tbody key={group.lv2}>
                     <tr>
-                      <td
-                        colSpan={11}
-                        className="py-8 text-center text-xs text-black/60"
-                      >
-                        施策がまだありません。「新規作成」から追加してください。
+                      <td colSpan={12} className="p-0">
+                        <div className="flex items-center gap-2 px-10 py-1.5 bg-black/[0.02]">
+                          <GroupLv2Icon value={group.lv2} size={12} />
+                          <span className="text-xs font-medium text-black/40">{group.lv2}</span>
+                        </div>
                       </td>
                     </tr>
-                  ) : (
-                    activeProjects.map((project) => (
+                    {group.items.map((project) => (
                       <SortableRow
                         key={project.id}
                         project={project}
@@ -535,13 +657,14 @@ export function ProjectList({ initialProjects, members }: Props) {
                         onEdit={() => setEditingProject(project)}
                         onDuplicate={() => handleDuplicate(project)}
                         onDelete={() => handleDelete(project.id)}
+                        onTogglePriority={() => handleTogglePriority(project)}
                         members={members}
                       />
-                    ))
-                  )}
-                </tbody>
-              </SortableContext>
-            </DndContext>
+                    ))}
+                  </tbody>
+                ))}
+              </>
+            )}
           </table>
         </div>
       )}
@@ -592,6 +715,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                             <th className="w-20 px-2 py-1.5">Eng</th>
                             <th className="w-20 px-2 py-1.5">状態</th>
                             <th className="w-8 px-1 py-1.5"></th>
+                            <th className="px-2 py-1.5">備考</th>
                             <th className="w-24 px-2 py-1.5"></th>
                           </tr>
                         </thead>
@@ -625,7 +749,6 @@ export function ProjectList({ initialProjects, members }: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr className={theadClasses}>
-                <th className="w-10 px-2 py-2 text-center">#</th>
                 <th className="px-2 py-2">タイトル</th>
                 <th className="w-28 px-2 py-2">公開日</th>
                 <th className="w-20 px-2 py-2">Dir</th>
@@ -653,6 +776,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                     onEdit={() => setEditingProject(project)}
                     onDuplicate={() => handleDuplicate(project)}
                     onDelete={() => handleDelete(project.id)}
+                    hidePriority
                     members={members}
                   />
                 ))
@@ -664,12 +788,14 @@ export function ProjectList({ initialProjects, members }: Props) {
 
       {/* ガントチャートビュー */}
       {viewMode === "gantt" && (
-        <GanttChart projects={activeProjects} members={members} />
+        <Suspense fallback={<div className="py-8 text-center text-xs text-black/30">読み込み中...</div>}>
+          <GanttChart projects={activeProjects} members={members} />
+        </Suspense>
       )}
 
       {/* フッター */}
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/10 bg-[#0e1620]/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
           <p className="text-xs text-white/40">{viewMode === "released" ? releasedProjects.length : activeProjects.length}件</p>
           <div className="flex items-center gap-2">
             <button
