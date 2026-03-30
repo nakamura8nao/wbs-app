@@ -7,6 +7,7 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { GanttChart } from "@/components/gantt-chart";
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
@@ -32,7 +33,7 @@ type Props = {
   members: Member[];
 };
 
-type ViewMode = "priority" | "group";
+type ViewMode = "priority" | "group" | "gantt" | "released";
 
 const statusStyle = (status: string) => {
   switch (status) {
@@ -244,6 +245,17 @@ export function ProjectList({ initialProjects, members }: Props) {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
+  // 公開済み（完了）とそれ以外を分離
+  const activeProjects = projects.filter((p) => p.status !== "完了");
+  const releasedProjects = [...projects.filter((p) => p.status === "完了")]
+    .sort((a, b) => {
+      // 公開予定日の降順（新しい順）。日付なしは末尾
+      if (!a.target_date && !b.target_date) return 0;
+      if (!a.target_date) return 1;
+      if (!b.target_date) return -1;
+      return b.target_date.localeCompare(a.target_date);
+    });
+
   const supabase = createClient();
 
   const sensors = useSensors(
@@ -395,7 +407,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       result.push({ lv1: lv2.parent, lv2: lv2.value, lv3Groups });
     }
 
-    for (const project of projects) {
+    for (const project of activeProjects) {
       const lv2Key = project.group_lv2;
       const lv3Key = project.group_lv3;
       const lv2Group = result.find((g) => g.lv2 === lv2Key);
@@ -443,6 +455,28 @@ export function ProjectList({ initialProjects, members }: Props) {
             >
               事業別
             </button>
+            <button
+              onClick={() => setViewMode("gantt")}
+              className={cn(
+                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                viewMode === "gantt"
+                  ? "bg-white/15 text-foreground"
+                  : "text-white/40 hover:text-white/60"
+              )}
+            >
+              ガント
+            </button>
+            <button
+              onClick={() => setViewMode("released")}
+              className={cn(
+                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                viewMode === "released"
+                  ? "bg-white/15 text-foreground"
+                  : "text-white/40 hover:text-white/60"
+              )}
+            >
+              公開済み
+            </button>
           </div>
         </div>
         <button
@@ -478,11 +512,11 @@ export function ProjectList({ initialProjects, members }: Props) {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={projects.map((p) => p.id)}
+                items={activeProjects.map((p) => p.id)}
                 strategy={verticalListSortingStrategy}
               >
                 <tbody>
-                  {projects.length === 0 ? (
+                  {activeProjects.length === 0 ? (
                     <tr>
                       <td
                         colSpan={11}
@@ -492,7 +526,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                       </td>
                     </tr>
                   ) : (
-                    projects.map((project) => (
+                    activeProjects.map((project) => (
                       <SortableRow
                         key={project.id}
                         project={project}
@@ -585,10 +619,58 @@ export function ProjectList({ initialProjects, members }: Props) {
         </div>
       )}
 
+      {/* 公開済みビュー */}
+      {viewMode === "released" && (
+        <div className="overflow-hidden rounded-md border border-black/5 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={theadClasses}>
+                <th className="w-10 px-2 py-2 text-center">#</th>
+                <th className="px-2 py-2">タイトル</th>
+                <th className="w-28 px-2 py-2">公開日</th>
+                <th className="w-20 px-2 py-2">Dir</th>
+                <th className="w-20 px-2 py-2">Des</th>
+                <th className="w-20 px-2 py-2">Eng</th>
+                <th className="w-20 px-2 py-2">状態</th>
+                <th className="w-8 px-1 py-2"></th>
+                <th className="w-24 px-2 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {releasedProjects.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-xs text-black/60">
+                    公開済みの施策はありません
+                  </td>
+                </tr>
+              ) : (
+                releasedProjects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    project={project}
+                    isExpanded={expandedProjectId === project.id}
+                    onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                    onEdit={() => setEditingProject(project)}
+                    onDuplicate={() => handleDuplicate(project)}
+                    onDelete={() => handleDelete(project.id)}
+                    members={members}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ガントチャートビュー */}
+      {viewMode === "gantt" && (
+        <GanttChart projects={activeProjects} members={members} />
+      )}
+
       {/* フッター */}
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/10 bg-[#0e1620]/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <p className="text-xs text-white/40">{projects.length}件</p>
+          <p className="text-xs text-white/40">{viewMode === "released" ? releasedProjects.length : activeProjects.length}件</p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
