@@ -56,8 +56,8 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+    <div className="space-y-1.5 leading-normal">
+      <Label className="text-sm font-medium text-slate-700">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </Label>
@@ -75,7 +75,7 @@ function FormSection({
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
         {title}
       </h3>
       {children}
@@ -96,7 +96,7 @@ function NativeSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+      className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm transition-colors outline-none cursor-pointer focus:ring-2 focus:ring-primary-500/50"
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -249,7 +249,7 @@ export function ProjectDialog({
                   onChange={(e) => update("target_date", e.target.value)}
                   className="w-48"
                 />
-                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-zinc-500">
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-500">
                   <input
                     type="checkbox"
                     checked={form.target_date_tentative}
@@ -328,18 +328,18 @@ export function ProjectDialog({
           </FormField>
 
           {/* ボタン */}
-          <div className="flex justify-end gap-3 border-t border-black/10 pt-4">
+          <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="rounded-md px-4 py-2 text-sm text-black/50 transition-colors hover:bg-black/5 hover:text-black/70 cursor-pointer"
+              className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
             >
               キャンセル
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-md bg-[#4a9eff] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#3a8eef] disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center justify-center h-10 px-4 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors cursor-pointer"
             >
               {submitting ? "保存中..." : "保存"}
             </button>

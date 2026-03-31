@@ -35,24 +35,24 @@ type Props = {
 
 type ViewMode = "priority" | "group" | "gantt" | "released";
 
-const statusStyle = (status: string) => {
+const statusConfig = (status: string) => {
   switch (status) {
     case "完了":
-      return "bg-emerald-50 text-emerald-600";
+      return { badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
     case "公開待ち":
-      return "bg-blue-50 text-blue-600";
+      return { badge: "bg-primary-50 text-primary-700", dot: "bg-primary-500" };
     case "テスト":
-      return "bg-amber-50 text-amber-600";
+      return { badge: "bg-amber-50 text-amber-700", dot: "bg-amber-500" };
     case "システム":
-      return "bg-violet-50 text-violet-600";
+      return { badge: "bg-violet-50 text-violet-700", dot: "bg-violet-500" };
     case "要件定義":
-      return "bg-cyan-50 text-cyan-600";
+      return { badge: "bg-cyan-50 text-cyan-700", dot: "bg-cyan-500" };
     case "要求定義":
-      return "bg-pink-50 text-pink-600";
+      return { badge: "bg-pink-50 text-pink-700", dot: "bg-pink-500" };
     case "調査":
-      return "bg-orange-50 text-orange-600";
+      return { badge: "bg-orange-50 text-orange-700", dot: "bg-orange-500" };
     default:
-      return "bg-white/10 text-black/60";
+      return { badge: "bg-slate-100 text-slate-700", dot: "bg-slate-400" };
   }
 };
 
@@ -96,72 +96,73 @@ const SortableRow = memo(function SortableRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "border-b border-black/5 transition-colors hover:bg-blue-50/70",
-        isDragging && "relative z-10 bg-white shadow-lg shadow-black/10"
+        "transition-colors hover:bg-gray-50",
+        isDragging && "relative z-10 bg-white shadow-md"
       )}
     >
-      <td className="w-8 px-1.5 py-2 text-center">
+      <td className="w-8 py-3 px-2 text-center">
         <span
           {...attributes}
           {...listeners}
-          className="cursor-grab text-black/40 hover:text-black/60 active:cursor-grabbing"
+          className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
           title="ドラッグして並び替え"
         >
           ⠿
         </span>
       </td>
-      <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
+      <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
         {project.priority_undecided ? "-" : project.priority}
       </td>
-      <td className="w-24 px-2 py-2 text-xs text-black/60">
+      <td className="w-36 py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
         <span className="flex items-center gap-1">
-          {project.group_lv2 && <GroupLv2Icon value={project.group_lv2} size={12} />}
+          {project.group_lv2 && <GroupLv2Icon value={project.group_lv2} size={20} />}
           {project.group_lv2 ?? project.group_lv1 ?? "-"}
         </span>
       </td>
-      <td className="px-2 py-2 text-sm text-foreground cursor-pointer" onClick={onToggle}>
+      <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1">
-          {isExpanded ? <ChevronDown size={14} className="text-black/30" /> : <ChevronRight size={14} className="text-black/30" />}
+          {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
         </span>
       </td>
-      <td className="w-28 px-2 py-2 text-sm text-foreground">
+      <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
         {project.target_date ? (
           project.target_date_tentative
-            ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
+            ? <span className="text-xs text-slate-400">{project.target_date} 仮</span>
             : project.target_date
         ) : "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.director?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.designer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.engineer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2">
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", statusStyle(project.status))}>
+      <td className="w-24 py-3 px-4 whitespace-nowrap">
+        <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
+          <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
           {project.status}
         </span>
       </td>
-      <td className="w-8 px-1 py-2 text-center text-sm">
+      <td className="w-8 py-3 px-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
       </td>
-      <td className="px-2 py-2 text-[11px] text-foreground whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
+      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
       </td>
-      <td className="px-2 py-2">
-        <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">編集</button>
-          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">複製</button>
+      <td className="py-3 px-4">
+        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 [tr:hover_&]:opacity-100">
+          <button onClick={onEdit} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">編集</button>
+          <button onClick={onDuplicate} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">複製</button>
           {onTogglePriority && (
-            <button onClick={onTogglePriority} className="rounded px-1.5 py-0.5 text-[11px] text-orange-400/70 hover:bg-orange-50 hover:text-orange-500">
+            <button onClick={onTogglePriority} className="rounded-lg px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors">
               {project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
             </button>
           )}
-          <button onClick={onDelete} className="rounded px-1.5 py-0.5 text-[11px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400">削除</button>
+          <button onClick={onDelete} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors">削除</button>
         </div>
       </td>
     </tr>
@@ -198,50 +199,51 @@ const ProjectRow = memo(function ProjectRow({
 }) {
   return (
     <>
-    <tr className="border-b border-black/5 transition-colors hover:bg-blue-50/70">
+    <tr className="transition-colors hover:bg-gray-50">
       {!hidePriority && (
-        <td className="w-10 px-2 py-2 text-center font-mono text-xs text-black/60">
+        <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
           {project.priority_undecided ? "-" : project.priority}
         </td>
       )}
-      <td className="px-2 py-2 text-sm text-foreground cursor-pointer" onClick={onToggle}>
+      <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1">
-          {isExpanded ? <ChevronDown size={14} className="text-black/30" /> : <ChevronRight size={14} className="text-black/30" />}
+          {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
         </span>
       </td>
-      <td className="w-28 px-2 py-2 text-sm text-foreground">
+      <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
         {project.target_date ? (
           project.target_date_tentative
-            ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
+            ? <span className="text-xs text-slate-400">{project.target_date} 仮</span>
             : project.target_date
         ) : "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.director?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.designer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2 text-sm text-foreground">
+      <td className="w-20 py-3 px-4 text-sm text-body">
         {project.engineer?.display_name ?? "-"}
       </td>
-      <td className="w-20 px-2 py-2">
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", statusStyle(project.status))}>
+      <td className="w-24 py-3 px-4 whitespace-nowrap">
+        <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
+          <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
           {project.status}
         </span>
       </td>
-      <td className="w-8 px-1 py-2 text-center text-sm">
+      <td className="w-8 py-3 px-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
       </td>
-      <td className="px-2 py-2 text-[11px] text-foreground whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
+      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
       </td>
-      <td className="px-2 py-2">
-        <div className="flex gap-0.5 opacity-0 transition-opacity [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">編集</button>
-          <button onClick={onDuplicate} className="rounded px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 hover:text-black/60">複製</button>
-          <button onClick={onDelete} className="rounded px-1.5 py-0.5 text-[11px] text-red-400/50 hover:bg-red-500/10 hover:text-red-400">削除</button>
+      <td className="py-3 px-4">
+        <div className="flex gap-1 opacity-0 transition-opacity [tr:hover_&]:opacity-100">
+          <button onClick={onEdit} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">編集</button>
+          <button onClick={onDuplicate} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">複製</button>
+          <button onClick={onDelete} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors">削除</button>
         </div>
       </td>
     </tr>
@@ -491,21 +493,23 @@ export function ProjectList({ initialProjects, members }: Props) {
     return result;
   };
 
-  const theadClasses = "border-b border-black/5 text-left text-[11px] font-medium text-black/60";
+  const theadClasses = "border-b border-slate-200 bg-gray-50";
 
   return (
     <div>
       {/* ヘッダー + ビュー切替 */}
-      <div className="sticky top-[37px] z-[15] -mx-5 mb-3 flex items-center justify-between border-b border-white/5 bg-[#141e2b] px-5 py-2">
-        <div className="flex items-center gap-3">
-          <div className="flex gap-0.5 rounded-md bg-white/10 p-0.5">
+      <div className="sticky top-[45px] z-[15] mb-4" style={{ marginLeft: "calc(-50vw + 50%)", marginRight: "calc(-50vw + 50%)", width: "100vw", left: 0 }}>
+        <div className="absolute inset-0 bg-background/90 backdrop-blur-sm" />
+        <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-5 py-3">
+        <div className="flex items-center gap-4">
+          <div className="flex gap-0.5 rounded-xl bg-white/8 p-1 backdrop-blur-sm">
             <button
               onClick={() => setViewMode("priority")}
               className={cn(
-                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
                 viewMode === "priority"
-                  ? "bg-white/15 text-white"
-                  : "text-white/40 hover:text-white/60"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
               )}
             >
               優先度順
@@ -513,10 +517,10 @@ export function ProjectList({ initialProjects, members }: Props) {
             <button
               onClick={() => setViewMode("group")}
               className={cn(
-                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
                 viewMode === "group"
-                  ? "bg-white/15 text-white"
-                  : "text-white/40 hover:text-white/60"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
               )}
             >
               事業別
@@ -524,10 +528,10 @@ export function ProjectList({ initialProjects, members }: Props) {
             <button
               onClick={() => setViewMode("gantt")}
               className={cn(
-                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
                 viewMode === "gantt"
-                  ? "bg-white/15 text-white"
-                  : "text-white/40 hover:text-white/60"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
               )}
             >
               ガント
@@ -535,10 +539,10 @@ export function ProjectList({ initialProjects, members }: Props) {
             <button
               onClick={() => setViewMode("released")}
               className={cn(
-                "rounded px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
                 viewMode === "released"
-                  ? "bg-white/15 text-white"
-                  : "text-white/40 hover:text-white/60"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
               )}
             >
               公開済み
@@ -548,7 +552,7 @@ export function ProjectList({ initialProjects, members }: Props) {
           <select
             value={filterMemberId}
             onChange={(e) => setFilterMemberId(e.target.value)}
-            className="h-7 rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white/70 outline-none cursor-pointer"
+            className="h-9 rounded-lg border border-white/15 bg-white/8 px-3 text-sm text-white/70 outline-none cursor-pointer backdrop-blur-sm focus:ring-2 focus:ring-primary-400/30"
           >
             <option value="">全メンバー</option>
             {members.map((m) => (
@@ -560,36 +564,37 @@ export function ProjectList({ initialProjects, members }: Props) {
         </div>
         <button
           onClick={() => setDialogOpen(true)}
-          className="rounded-md bg-[#4a9eff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] cursor-pointer"
+          className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-400 shadow-lg shadow-primary-500/25 transition-all duration-200 cursor-pointer"
         >
           + 新規作成
         </button>
+        </div>
       </div>
 
       {/* 優先度順ビュー（D&D対応） */}
       {viewMode === "priority" && (
-        <div className="overflow-hidden rounded-md border border-black/5 bg-white">
+        <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className={theadClasses}>
-                <th className="w-8 px-1.5 py-2"></th>
-                <th className="w-10 px-2 py-2 text-center">#</th>
-                <th className="w-24 px-2 py-2">事業</th>
-                <th className="px-2 py-2">タイトル</th>
-                <th className="w-28 px-2 py-2">公開目安</th>
-                <th className="w-20 px-2 py-2">Dir</th>
-                <th className="w-20 px-2 py-2">Des</th>
-                <th className="w-20 px-2 py-2">Eng</th>
-                <th className="w-20 px-2 py-2">状態</th>
-                <th className="w-8 px-1 py-2"></th>
-                <th className="px-2 py-2">備考</th>
-                <th className="w-24 px-2 py-2"></th>
+                <th scope="col" className="w-8 py-3 px-2"></th>
+                <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
+                <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">事業</th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                <th scope="col" className="w-8 py-3 px-2"></th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
+                <th scope="col" className="w-24 py-3 px-4"></th>
               </tr>
             </thead>
             {activeProjects.length === 0 ? (
               <tbody>
                 <tr>
-                  <td colSpan={12} className="py-8 text-center text-xs text-black/60">
+                  <td colSpan={12} className="py-16 text-center text-base text-slate-500">
                     施策がまだありません。「新規作成」から追加してください。
                   </td>
                 </tr>
@@ -606,7 +611,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                     items={decidedProjects.map((p) => p.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <tbody>
+                    <tbody className="divide-y divide-slate-100">
                       {decidedProjects.map((project) => (
                         <SortableRow
                           key={project.id}
@@ -628,10 +633,10 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <tbody>
                   <tr>
                     <td colSpan={12} className="p-0">
-                      <div className="flex items-center gap-3 px-4 py-2 bg-black/[0.03]">
-                        <div className="flex-1 border-t-2 border-dashed border-orange-300/50" />
-                        <span className="text-xs font-medium text-orange-400/70 whitespace-nowrap">優先順位 未決定</span>
-                        <div className="flex-1 border-t-2 border-dashed border-orange-300/50" />
+                      <div className="flex items-center gap-4 px-4 py-3 bg-gray-50">
+                        <div className="flex-1 border-t border-slate-200" />
+                        <span className="text-xs font-medium text-amber-700 whitespace-nowrap">優先順位 未決定</span>
+                        <div className="flex-1 border-t border-slate-200" />
                       </div>
                     </td>
                   </tr>
@@ -639,12 +644,12 @@ export function ProjectList({ initialProjects, members }: Props) {
 
                 {/* 未決定セクション（グループ別） */}
                 {undecidedGrouped.map((group) => (
-                  <tbody key={group.lv2}>
+                  <tbody key={group.lv2} className="divide-y divide-slate-100">
                     <tr>
                       <td colSpan={12} className="p-0">
-                        <div className="flex items-center gap-2 px-10 py-1.5 bg-black/[0.02]">
-                          <GroupLv2Icon value={group.lv2} size={12} />
-                          <span className="text-xs font-medium text-black/40">{group.lv2}</span>
+                        <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
+                          <GroupLv2Icon value={group.lv2} size={16} />
+                          <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
                         </div>
                       </td>
                     </tr>
@@ -677,49 +682,49 @@ export function ProjectList({ initialProjects, members }: Props) {
             return (
               <div
                 key={group.lv2}
-                className="overflow-hidden rounded-md border border-black/5 bg-white"
+                className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
               >
-                <div className="flex items-center gap-2 border-b border-black/5 bg-black/[0.01] px-4 py-2.5">
-                  <span className="text-[11px] text-black/60">{group.lv1}</span>
-                  {group.lv1 && <span className="text-[11px] text-black/30">/</span>}
+                <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
+                  <span className="text-xs text-slate-500">{group.lv1}</span>
+                  {group.lv1 && <span className="text-xs text-slate-400">/</span>}
                   <GroupLv2Icon value={group.lv2} size={16} />
-                  <h3 className="text-base font-bold text-black/80">{group.lv2}</h3>
-                  <span className="text-[11px] text-black/40">
+                  <h3 className="text-base font-bold text-slate-900">{group.lv2}</h3>
+                  <span className="text-xs text-slate-500">
                     {totalItems}件
                   </span>
                 </div>
                 {group.lv3Groups.map((lv3Group) => (
                   <div key={lv3Group.name}>
-                    <div className="flex items-center gap-2 border-t-2 border-black/8 bg-black/[0.02] px-4 py-2.5 first:border-t-0">
+                    <div className="flex items-center gap-2 border-t border-slate-200 bg-gray-50 px-4 py-2.5 first:border-t-0">
                       <GroupLv3Icon value={lv3Group.name} />
-                      <span className="text-sm font-semibold text-black/60">
+                      <span className="text-sm font-semibold text-slate-700">
                         {lv3Group.name}
                       </span>
-                      <span className="text-[11px] text-black/40">
+                      <span className="text-xs text-slate-500">
                         {lv3Group.items.length}件
                       </span>
                     </div>
                     {lv3Group.items.length === 0 ? (
-                      <div className="px-4 py-3 text-xs text-black/30">
+                      <div className="px-4 py-3 text-sm text-slate-400">
                         施策なし
                       </div>
                     ) : (
                       <table className="w-full text-sm">
                         <thead>
                           <tr className={theadClasses}>
-                            <th className="w-10 px-2 py-1.5 text-center">#</th>
-                            <th className="px-2 py-1.5">タイトル</th>
-                            <th className="w-28 px-2 py-1.5">公開目安</th>
-                            <th className="w-20 px-2 py-1.5">Dir</th>
-                            <th className="w-20 px-2 py-1.5">Des</th>
-                            <th className="w-20 px-2 py-1.5">Eng</th>
-                            <th className="w-20 px-2 py-1.5">状態</th>
-                            <th className="w-8 px-1 py-1.5"></th>
-                            <th className="px-2 py-1.5">備考</th>
-                            <th className="w-24 px-2 py-1.5"></th>
+                            <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
+                            <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                            <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                            <th scope="col" className="w-8 py-3 px-2"></th>
+                            <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
+                            <th scope="col" className="w-24 py-3 px-4"></th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-slate-100">
                           {lv3Group.items.map((project) => (
                             <ProjectRow
                               key={project.id}
@@ -745,24 +750,24 @@ export function ProjectList({ initialProjects, members }: Props) {
 
       {/* 公開済みビュー */}
       {viewMode === "released" && (
-        <div className="overflow-hidden rounded-md border border-black/5 bg-white">
+        <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className={theadClasses}>
-                <th className="px-2 py-2">タイトル</th>
-                <th className="w-28 px-2 py-2">公開日</th>
-                <th className="w-20 px-2 py-2">Dir</th>
-                <th className="w-20 px-2 py-2">Des</th>
-                <th className="w-20 px-2 py-2">Eng</th>
-                <th className="w-20 px-2 py-2">状態</th>
-                <th className="w-8 px-1 py-2"></th>
-                <th className="w-24 px-2 py-2"></th>
+                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                <th scope="col" className="w-8 py-3 px-2"></th>
+                <th scope="col" className="w-24 py-3 px-4"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {releasedProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-xs text-black/60">
+                  <td colSpan={9} className="py-16 text-center text-base text-slate-500">
                     公開済みの施策はありません
                   </td>
                 </tr>
@@ -788,31 +793,10 @@ export function ProjectList({ initialProjects, members }: Props) {
 
       {/* ガントチャートビュー */}
       {viewMode === "gantt" && (
-        <Suspense fallback={<div className="py-8 text-center text-xs text-black/30">読み込み中...</div>}>
+        <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
           <GanttChart projects={activeProjects} members={members} />
         </Suspense>
       )}
-
-      {/* フッター */}
-      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-white/10 bg-[#0e1620]/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-3">
-          <p className="text-xs text-white/40">{viewMode === "released" ? releasedProjects.length : activeProjects.length}件</p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              className="rounded px-2.5 py-1 text-xs text-white/40 transition-colors hover:bg-white/10 hover:text-white/60 cursor-pointer"
-            >
-              Top
-            </button>
-            <button
-              onClick={() => setDialogOpen(true)}
-              className="rounded-md bg-[#4a9eff] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#3a8eef] cursor-pointer"
-            >
-              + 新規作成
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* 新規作成ダイアログ */}
       <ProjectDialog

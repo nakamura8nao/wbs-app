@@ -10,7 +10,7 @@ export const GROUP_LV1_OPTIONS = [
 
 export const GROUP_LV2_OPTIONS = [
   { value: "SaaS", parent: "サービス開発", icon: "Cloud", color: "text-violet-500" },
-  { value: "カウンター・フェア", parent: "サービス開発", icon: "Users", color: "text-emerald-500" },
+  { value: "カウンター・フェア", parent: "サービス開発", icon: "Handshake", color: "text-emerald-600" },
   { value: "メディア", parent: "サービス開発", icon: "Globe", color: "text-blue-500" },
   { value: "保守", parent: "保守", icon: "Wrench", color: "text-orange-500" },
 ] as const;

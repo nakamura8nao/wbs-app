@@ -46,11 +46,24 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* melta UI primary palette */
+  --color-primary-50: #f0f5ff;
+  --color-primary-100: #dde8ff;
+  --color-primary-200: #c0d4ff;
+  --color-primary-300: #95b6ff;
+  --color-primary-400: #6492ff;
+  --color-primary-500: #2b70ef;
+  --color-primary-600: #2250df;
+  --color-primary-700: #1a40b5;
+  --color-primary-800: #13318d;
+  --color-primary-900: #0e266a;
+  --color-primary-950: #07194e;
 }
 
 /* Linear-inspired light theme */
 :root {
-  --background: #141e2b;
+  --background: #1a2538;
   --foreground: #1a1a2e;
   --card: #ffffff;
   --card-foreground: #1a1a2e;
@@ -87,6 +100,9 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  .text-body {
+    color: #3d4b5f;
   }
   body {
     @apply bg-background text-foreground antialiased;

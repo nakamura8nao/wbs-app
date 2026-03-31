@@ -29,7 +29,7 @@ export default async function Home() {
   return (
     <div className="min-h-screen">
       <Header />
-      <main className="mx-auto max-w-[1400px] px-5 py-4 pb-36">
+      <main className="mx-auto max-w-[1600px] px-5 py-4 pb-8">
         <ProjectList
           initialProjects={projects ?? []}
           members={members ?? []}

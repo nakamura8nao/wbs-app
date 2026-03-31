@@ -14,21 +14,22 @@ export function Header({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0e1620]/90 backdrop-blur">
-      <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-2">
-        <div className="flex items-center gap-5">
-          <h1 className="text-sm font-semibold tracking-tight text-white/90">WBS</h1>
-          <nav className="flex gap-0.5">
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0f1923]/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between px-5 py-2.5">
+        <div className="flex items-center gap-6">
+          <h1 className="text-base font-bold tracking-tight text-white">WBS</h1>
+          <nav aria-label="メインナビゲーション" className="flex gap-1">
             {NAV_ITEMS.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
                   pathname === item.href
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/70"
+                    ? "bg-primary-500/20 text-primary-300 shadow-sm shadow-primary-500/10"
+                    : "text-white/50 hover:text-white/80 hover:bg-white/5"
                 )}
+                {...(pathname === item.href ? { "aria-current": "page" as const } : {})}
               >
                 {item.label}
               </Link>

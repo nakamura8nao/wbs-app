@@ -1,6 +1,6 @@
 import {
   Cloud,
-  Users,
+  Handshake,
   Globe,
   Wrench,
   Building2,
@@ -19,7 +19,7 @@ import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
 
 const iconMap: Record<string, LucideIcon> = {
   Cloud,
-  Users,
+  Handshake,
   Globe,
   Wrench,
   Building2,
