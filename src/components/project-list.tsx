@@ -496,7 +496,7 @@ export function ProjectList({ initialProjects, members }: Props) {
   return (
     <div>
       {/* ヘッダー + ビュー切替 */}
-      <div className="sticky top-[37px] z-20 mb-3 flex items-center justify-between bg-[#141e2b] py-2">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex gap-0.5 rounded-md bg-white/10 p-0.5">
             <button
