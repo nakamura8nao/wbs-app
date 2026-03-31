@@ -411,6 +411,7 @@ export function GanttChart({
   const [addForm, setAddForm] = useState<PhaseFormData | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const labelScrollRef = useRef<HTMLDivElement>(null);
 
   const supabase = createClient();
 
@@ -443,6 +444,34 @@ export function GanttChart({
   useEffect(() => {
     loadAllPhases();
   }, [initialProjects]);
+
+  // 左右の縦スクロールを同期
+  useEffect(() => {
+    const labelEl = labelScrollRef.current;
+    const timelineEl = scrollRef.current;
+    if (!labelEl || !timelineEl) return;
+
+    let syncing = false;
+    const syncLabel = () => {
+      if (syncing) return;
+      syncing = true;
+      labelEl.scrollTop = timelineEl.scrollTop;
+      syncing = false;
+    };
+    const syncTimeline = () => {
+      if (syncing) return;
+      syncing = true;
+      timelineEl.scrollTop = labelEl.scrollTop;
+      syncing = false;
+    };
+
+    timelineEl.addEventListener("scroll", syncLabel);
+    labelEl.addEventListener("scroll", syncTimeline);
+    return () => {
+      timelineEl.removeEventListener("scroll", syncLabel);
+      labelEl.removeEventListener("scroll", syncTimeline);
+    };
+  }, [loading, ganttProjects]);
 
   // 今日の位置にスクロール
   useEffect(() => {
@@ -590,10 +619,10 @@ export function GanttChart({
   const LABEL_WIDTH = 280;
 
   return (
-    <div className="overflow-hidden rounded-md border border-black/5 bg-white">
-      <div className="flex">
+    <div className="overflow-hidden rounded-md border border-black/5 bg-white" style={{ height: "calc(100vh - 140px)" }}>
+      <div className="flex h-full">
         {/* 左ラベル列 */}
-        <div className="flex-shrink-0 border-r border-black/10" style={{ width: LABEL_WIDTH }}>
+        <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
           {/* ヘッダー */}
           <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex items-center px-3 text-xs font-medium text-black/50" style={{ height: HEADER_HEIGHT }}>
             施策 / フェーズ
@@ -676,7 +705,7 @@ export function GanttChart({
         </div>
 
         {/* 右タイムライン */}
-        <div className="flex-1 overflow-x-auto" ref={scrollRef}>
+        <div className="flex-1 overflow-auto" ref={scrollRef}>
           <div style={{ width: totalDays * DAY_WIDTH, minHeight: "100%" }}>
             <DateHeader start={range.start} totalDays={totalDays} />
 
