@@ -118,7 +118,8 @@ export function SnapshotList({ initialSnapshots }: { initialSnapshots: SnapshotM
               snapshots.map((snap) => (
                 <tr
                   key={snap.id}
-                  className="border-b border-black/5 transition-colors hover:bg-blue-50/70"
+                  className="border-b border-black/5 transition-colors hover:bg-blue-50/70 cursor-pointer"
+                  onClick={() => router.push(`/snapshots/${snap.id}`)}
                 >
                   <td className="px-3 py-2 text-sm text-foreground font-medium">
                     {snap.snapshot_date}
