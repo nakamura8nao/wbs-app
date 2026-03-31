@@ -149,6 +149,85 @@ function DateHeader({ start, totalDays }: { start: Date; totalDays: number }) {
   );
 }
 
+// 日付未設定のフェーズ行：ドラッグで日付を作成
+function EmptyPhaseRow({
+  phaseId,
+  rangeStart,
+  totalDays,
+  onCreateDates,
+}: {
+  phaseId: string;
+  rangeStart: Date;
+  totalDays: number;
+  onCreateDates: (phaseId: string, startDate: string, endDate: string) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<number | null>(null);
+  const [dragEnd, setDragEnd] = useState<number | null>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const getDayFromX = (clientX: number): number => {
+    if (!rowRef.current) return 0;
+    const rect = rowRef.current.getBoundingClientRect();
+    return Math.floor((clientX - rect.left) / DAY_WIDTH);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const day = getDayFromX(e.clientX);
+    setDragging(true);
+    setDragStart(day);
+    setDragEnd(day);
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!rowRef.current) return;
+      const d = getDayFromX(ev.clientX);
+      setDragEnd(d);
+    };
+
+    const handleMouseUp = (ev: MouseEvent) => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      const endDay = getDayFromX(ev.clientX);
+      setDragging(false);
+
+      if (dragStart !== null) {
+        const startDay = Math.min(dragStart, endDay);
+        const finalEnd = Math.max(dragStart, endDay);
+        const startDate = toDateStr(addDays(rangeStart, startDay));
+        const endDate = toDateStr(addDays(rangeStart, finalEnd));
+        onCreateDates(phaseId, startDate, endDate);
+      }
+      setDragStart(null);
+      setDragEnd(null);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const barLeft = dragging && dragStart !== null && dragEnd !== null
+    ? Math.min(dragStart, dragEnd) * DAY_WIDTH
+    : 0;
+  const barWidth = dragging && dragStart !== null && dragEnd !== null
+    ? (Math.abs(dragEnd - dragStart) + 1) * DAY_WIDTH
+    : 0;
+
+  return (
+    <div
+      ref={rowRef}
+      className="absolute inset-0 cursor-crosshair"
+      onMouseDown={handleMouseDown}
+    >
+      {dragging && barWidth > 0 && (
+        <div
+          className="absolute top-1 rounded-md bg-[#4a9eff]/30 border border-[#4a9eff]/50"
+          style={{ left: barLeft, width: barWidth, height: ROW_HEIGHT - 8 }}
+        />
+      )}
+    </div>
+  );
+}
+
 // バー
 function GanttBar({
   phase,
@@ -636,11 +715,19 @@ export function GanttChart({
                   className="relative border-b border-black/5"
                   style={{ height: ROW_HEIGHT }}
                 >
-                  {row.type === "phase" && row.phase && (
+                  {row.type === "phase" && row.phase && row.phase.start_date && row.phase.end_date && (
                     <GanttBar
                       phase={row.phase}
                       rangeStart={range.start}
                       onUpdate={handleUpdatePhase}
+                    />
+                  )}
+                  {row.type === "phase" && row.phase && !row.phase.start_date && !row.phase.end_date && (
+                    <EmptyPhaseRow
+                      phaseId={row.phase.id}
+                      rangeStart={range.start}
+                      totalDays={totalDays}
+                      onCreateDates={handleUpdatePhase}
                     />
                   )}
                   {row.type === "project" && (

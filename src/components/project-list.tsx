@@ -491,7 +491,7 @@ export function ProjectList({ initialProjects, members }: Props) {
     return result;
   };
 
-  const theadClasses = "border-b border-black/5 text-left text-[11px] font-medium text-black/60 sticky top-[41px] z-10 bg-white";
+  const theadClasses = "border-b border-black/5 text-left text-[11px] font-medium text-black/60 sticky top-[37px] z-10 bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]";
 
   return (
     <div>
