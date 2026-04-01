@@ -55,6 +55,24 @@ export const PROGRESS_OPTIONS = [
   { value: "done", label: "✅️" },
 ] as const;
 
+export const SIZE_OPTIONS = [
+  { value: "1", label: "1pt (1h)" },
+  { value: "2", label: "2pt (2h)" },
+  { value: "4", label: "4pt (4h)" },
+  { value: "8", label: "8pt (1日)" },
+  { value: "16", label: "16pt (2日)" },
+  { value: "24", label: "24pt (3日)" },
+  { value: "32", label: "32pt (4日)" },
+  { value: "40", label: "40pt (1週間)" },
+  { value: "80", label: "80pt (2週間)" },
+  { value: "120", label: "120pt (3週間)" },
+  { value: "160", label: "160pt (1か月)" },
+  { value: "240", label: "240pt (1か月半)" },
+  { value: "320", label: "320pt (2か月)" },
+  { value: "400", label: "400pt (2か月半)" },
+  { value: "480", label: "480pt (3か月)" },
+] as const;
+
 export const PHASE_STATUS_OPTIONS = [
   "未着手",
   "進行中",
@@ -73,3 +91,4 @@ export type Status = (typeof STATUS_OPTIONS)[number];
 export type Progress = (typeof PROGRESS_OPTIONS)[number]["value"];
 export type PhaseStatus = (typeof PHASE_STATUS_OPTIONS)[number];
 export type MemberRole = (typeof MEMBER_ROLE_OPTIONS)[number];
+export type Size = (typeof SIZE_OPTIONS)[number]["value"];

@@ -65,6 +65,7 @@ export type Database = {
           designer_id: string | null;
           status: string;
           progress: string;
+          size: string | null;
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -85,6 +86,7 @@ export type Database = {
           designer_id?: string | null;
           status?: string;
           progress?: string;
+          size?: string | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -103,6 +105,7 @@ export type Database = {
           designer_id?: string | null;
           status?: string;
           progress?: string;
+          size?: string | null;
           notes?: string | null;
           updated_at?: string;
         };

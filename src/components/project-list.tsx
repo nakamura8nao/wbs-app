@@ -8,7 +8,7 @@ import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { ChevronDown, ChevronRight } from "lucide-react";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
+import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
   DndContext,
@@ -34,6 +34,11 @@ type Props = {
 };
 
 type ViewMode = "priority" | "group" | "gantt" | "released";
+
+const sizeLabel = (value: string | null) => {
+  if (!value) return "-";
+  return SIZE_OPTIONS.find((s) => s.value === value)?.label ?? value;
+};
 
 const statusConfig = (status: string) => {
   switch (status) {
@@ -147,6 +152,9 @@ const SortableRow = memo(function SortableRow({
           {project.status}
         </span>
       </td>
+      <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
+        {sizeLabel(project.size)}
+      </td>
       <td className="w-8 py-3 px-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
       </td>
@@ -168,7 +176,7 @@ const SortableRow = memo(function SortableRow({
     </tr>
     {isExpanded && (
       <tr>
-        <td colSpan={12} className="p-0">
+        <td colSpan={13} className="p-0">
           <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
         </td>
       </tr>
@@ -232,6 +240,9 @@ const ProjectRow = memo(function ProjectRow({
           <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
           {project.status}
         </span>
+      </td>
+      <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
+        {sizeLabel(project.size)}
       </td>
       <td className="w-8 py-3 px-2 text-center text-sm">
         <ProgressIcon value={project.progress} />
@@ -345,6 +356,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       designer_id: formData.designer_id || null,
       status: formData.progress === "done" ? "完了" : formData.status,
       progress: formData.progress,
+      size: formData.size || null,
       notes: formData.notes || null,
     } as never);
 
@@ -370,6 +382,7 @@ export function ProjectList({ initialProjects, members }: Props) {
         designer_id: formData.designer_id || null,
         status: formData.progress === "done" ? "完了" : formData.status,
         progress: formData.progress,
+        size: formData.size || null,
         notes: formData.notes || null,
       } as never)
       .eq("id", editingProject.id);
@@ -399,6 +412,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       designer_id: project.designer_id,
       status: "未着手",
       progress: "paused",
+      size: project.size,
       notes: project.notes,
     } as never);
 
@@ -586,6 +600,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
                 <th scope="col" className="w-24 py-3 px-4"></th>
@@ -594,7 +609,7 @@ export function ProjectList({ initialProjects, members }: Props) {
             {activeProjects.length === 0 ? (
               <tbody>
                 <tr>
-                  <td colSpan={12} className="py-16 text-center text-base text-slate-500">
+                  <td colSpan={13} className="py-16 text-center text-base text-slate-500">
                     施策がまだありません。「新規作成」から追加してください。
                   </td>
                 </tr>
@@ -632,7 +647,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 {/* 区切り線 */}
                 <tbody>
                   <tr>
-                    <td colSpan={12} className="p-0">
+                    <td colSpan={13} className="p-0">
                       <div className="flex items-center gap-4 px-4 py-3 bg-gray-50">
                         <div className="flex-1 border-t border-slate-200" />
                         <span className="text-xs font-medium text-amber-700 whitespace-nowrap">優先順位 未決定</span>
@@ -646,7 +661,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 {undecidedGrouped.map((group) => (
                   <tbody key={group.lv2} className="divide-y divide-slate-100">
                     <tr>
-                      <td colSpan={12} className="p-0">
+                      <td colSpan={13} className="p-0">
                         <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
                           <GroupLv2Icon value={group.lv2} size={16} />
                           <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
@@ -719,6 +734,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                             <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                             <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                             <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                             <th scope="col" className="w-8 py-3 px-2"></th>
                             <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
                             <th scope="col" className="w-24 py-3 px-4"></th>
@@ -760,6 +776,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-24 py-3 px-4"></th>
               </tr>

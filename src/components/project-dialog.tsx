@@ -18,6 +18,7 @@ import {
   getGroupLv3Options,
   STATUS_OPTIONS,
   PROGRESS_OPTIONS,
+  SIZE_OPTIONS,
 } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 
@@ -43,16 +44,19 @@ const EMPTY_FORM: ProjectFormData = {
   designer_id: "",
   status: "未着手",
   progress: "paused",
+  size: "",
   notes: "",
 };
 
 function FormField({
   label,
   required,
+  tooltip,
   children,
 }: {
   label: string;
   required?: boolean;
+  tooltip?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -60,6 +64,7 @@ function FormField({
       <Label className="text-sm font-medium text-slate-700">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
+        {tooltip && <span className="ml-1 inline-flex cursor-help text-slate-400" data-tooltip={tooltip}>?</span>}
       </Label>
       {children}
     </div>
@@ -133,6 +138,7 @@ export function ProjectDialog({
         designer_id: defaultValues.designer_id ?? "",
         status: defaultValues.status,
         progress: defaultValues.progress,
+        size: defaultValues.size ?? "",
         notes: defaultValues.notes ?? "",
       });
     } else {
@@ -163,6 +169,10 @@ export function ProjectDialog({
     });
   };
 
+  const sizeOptions = [
+    { value: "", label: "未設定" },
+    ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
+  ];
   const statusOptions = STATUS_OPTIONS.map((s) => ({ value: s, label: s }));
   const progressOptions = PROGRESS_OPTIONS.map((p) => ({
     value: p.value,
@@ -299,7 +309,7 @@ export function ProjectDialog({
 
           {/* ステータス */}
           <FormSection title="ステータス">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <FormField label="ステータス">
                 <NativeSelect
                   value={form.status}
@@ -312,6 +322,13 @@ export function ProjectDialog({
                   value={form.progress}
                   onChange={(v) => update("progress", v)}
                   options={progressOptions}
+                />
+              </FormField>
+              <FormField label="規模" tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">
+                <NativeSelect
+                  value={form.size}
+                  onChange={(v) => update("size", v)}
+                  options={sizeOptions}
                 />
               </FormField>
             </div>

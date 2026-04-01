@@ -23,6 +23,7 @@ export type Project = {
   designer_id: string | null;
   status: string;
   progress: string;
+  size: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -77,5 +78,6 @@ export type ProjectFormData = {
   designer_id: string;
   status: string;
   progress: string;
+  size: string;
   notes: string;
 };
