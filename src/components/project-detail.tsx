@@ -2,12 +2,14 @@
 
 import { lazy, Suspense } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, Check } from "lucide-react";
+import { ArrowLeft, Copy, Check, Pencil } from "lucide-react";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { PhasePanel } from "@/components/phase-panel";
+import { ProjectDialog } from "@/components/project-dialog";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { SIZE_OPTIONS } from "@/lib/constants";
-import type { Project, Member } from "@/lib/types/models";
+import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 
 const sizeLabel = (value: string | null) => {
@@ -37,18 +39,53 @@ const statusConfig = (status: string) => {
 };
 
 export function ProjectDetail({
-  project,
+  project: initialProject,
   members,
 }: {
   project: Project;
   members: Member[];
 }) {
+  const [project, setProject] = useState(initialProject);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const supabase = createClient();
 
   const handleCopyUrl = async () => {
     await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleUpdate = async (formData: ProjectFormData) => {
+    const { data } = await supabase
+      .from("projects")
+      .update({
+        title: formData.title,
+        group_lv1: formData.group_lv1 || null,
+        group_lv2: formData.group_lv2 || null,
+        group_lv3: formData.group_lv3 || null,
+        priority: formData.priority,
+        target_date: formData.target_date || null,
+        target_date_tentative: formData.target_date_tentative,
+        director_id: formData.director_id || null,
+        engineer_id: formData.engineer_id || null,
+        designer_id: formData.designer_id || null,
+        status: formData.progress === "done" ? "完了" : formData.status,
+        progress: formData.progress,
+        size: formData.size || null,
+        notes: formData.notes || null,
+      } as never)
+      .eq("id", project.id)
+      .select(`
+        *,
+        director:members!projects_director_id_fkey(id, display_name, role),
+        engineer:members!projects_engineer_id_fkey(id, display_name, role),
+        designer:members!projects_designer_id_fkey(id, display_name, role)
+      `)
+      .single();
+
+    if (data) setProject(data as Project);
+    setEditing(false);
   };
 
   return (
@@ -68,13 +105,22 @@ export function ProjectDetail({
             {project.status}
           </span>
         </div>
-        <button
-          onClick={handleCopyUrl}
-          className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/60 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
-        >
-          {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-          {copied ? "コピーしました" : "URLをコピー"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/60 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+          >
+            <Pencil size={13} />
+            編集
+          </button>
+          <button
+            onClick={handleCopyUrl}
+            className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/60 hover:bg-white/10 hover:text-white/80 transition-colors cursor-pointer"
+          >
+            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            {copied ? "コピーしました" : "URLをコピー"}
+          </button>
+        </div>
       </div>
 
       {/* 施策情報 */}
@@ -122,6 +168,16 @@ export function ProjectDetail({
           />
         </Suspense>
       </div>
+
+      {/* 編集ダイアログ */}
+      <ProjectDialog
+        open={editing}
+        onOpenChange={setEditing}
+        onSubmit={handleUpdate}
+        members={members}
+        title="施策を編集"
+        defaultValues={project}
+      />
     </div>
   );
 }
