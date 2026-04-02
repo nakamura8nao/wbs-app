@@ -6,7 +6,8 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import Link from "next/link";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
@@ -125,9 +126,17 @@ const SortableRow = memo(function SortableRow({
         </span>
       </td>
       <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 group/title">
           {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
+          <Link
+            href={`/projects/${project.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="opacity-0 group-hover/title:opacity-100 text-slate-400 hover:text-[#4a9eff] transition-all ml-1"
+            title="施策の個別ページを開く"
+          >
+            <ExternalLink size={13} />
+          </Link>
         </span>
       </td>
       <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
@@ -214,9 +223,17 @@ const ProjectRow = memo(function ProjectRow({
         </td>
       )}
       <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 group/title">
           {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
+          <Link
+            href={`/projects/${project.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="opacity-0 group-hover/title:opacity-100 text-slate-400 hover:text-[#4a9eff] transition-all ml-1"
+            title="施策の個別ページを開く"
+          >
+            <ExternalLink size={13} />
+          </Link>
         </span>
       </td>
       <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
