@@ -7,7 +7,23 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { PHASE_STATUS_OPTIONS } from "@/lib/constants";
 import type { Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, ArrowRight } from "lucide-react";
+import { Plus, Trash2, ArrowRight, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // role: "director" | "designer" | "engineer" で施策の担当者を自動割り当て
 const DEFAULT_PHASES: { name: string; role?: "director" | "designer" | "engineer" }[] = [
@@ -209,6 +225,36 @@ export function PhasePanel({
     }
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = phases.findIndex((p) => p.id === active.id);
+    const newIndex = phases.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = [...phases];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    // Optimistic update
+    const updated = reordered.map((p, i) => ({ ...p, sort_order: i + 1 }));
+    setPhases(updated);
+
+    // Persist only changed rows
+    const changed = updated.filter((p, i) => p.sort_order !== phases.find((op) => op.id === p.id)?.sort_order);
+    await Promise.all(
+      changed.map((p) =>
+        supabase.from("phases").update({ sort_order: p.sort_order } as never).eq("id", p.id)
+      )
+    );
+  };
+
   if (loading) {
     return <div className="px-4 py-3 text-xs text-black/30">読み込み中...</div>;
   }
@@ -233,72 +279,39 @@ export function PhasePanel({
         )}
 
         {/* フェーズリスト */}
-        <div className="space-y-0.5">
-          {phases.map((phase) => {
-            const depPhase = phase.dependencies?.[0]
-              ? phases.find((p) => p.id === phase.dependencies![0].depends_on_phase_id)
-              : null;
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-0.5">
+              {phases.map((phase) => {
+                if (editingId === phase.id) {
+                  return (
+                    <PhaseForm
+                      key={phase.id}
+                      form={form}
+                      setForm={setForm}
+                      members={members}
+                      phases={phases.filter((p) => p.id !== phase.id)}
+                      onSave={handleUpdate}
+                      onCancel={cancel}
+                      isEdit
+                    />
+                  );
+                }
 
-            if (editingId === phase.id) {
-              return (
-                <PhaseForm
-                  key={phase.id}
-                  form={form}
-                  setForm={setForm}
-                  members={members}
-                  phases={phases.filter((p) => p.id !== phase.id)}
-                  onSave={handleUpdate}
-                  onCancel={cancel}
-                  isEdit
-                />
-              );
-            }
-
-            return (
-              <div
-                key={phase.id}
-                className="group grid items-center rounded-md px-2 py-1.5 hover:bg-black/[0.03] cursor-pointer"
-                style={{ gridTemplateColumns: "20px 1fr 120px 80px 180px 160px 24px" }}
-                onClick={() => startEdit(phase)}
-              >
-                <ProgressIcon value={statusIcon(phase.status)} size={14} />
-                <span className="min-w-0 truncate text-sm text-black/80">
-                  {phase.name}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-black/60">
-                  {depPhase && (
-                    <>
-                      <ArrowRight size={11} />
-                      {depPhase.name}
-                    </>
-                  )}
-                </span>
-                <span className="text-xs text-black/60 truncate">
-                  {phase.assignee?.display_name ?? ""}
-                </span>
-                <span className="text-xs text-black/60">
-                  {phase.start_date && phase.end_date
-                    ? `${phase.start_date} 〜 ${phase.end_date}`
-                    : ""}
-                </span>
-                <span className="text-xs text-black/60">
-                  {(phase.traditional_hours || phase.ai_target_hours || phase.actual_hours)
-                    ? `${phase.traditional_hours ?? "-"}h → ${phase.ai_target_hours ?? "-"}h → ${phase.actual_hours ?? "-"}h`
-                    : ""}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(phase.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                return (
+                  <SortablePhaseRow
+                    key={phase.id}
+                    phase={phase}
+                    phases={phases}
+                    onEdit={() => startEdit(phase)}
+                    onDelete={() => handleDelete(phase.id)}
+                    statusIcon={statusIcon}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         {/* 新規追加フォーム */}
         {addingNew && (
@@ -312,6 +325,92 @@ export function PhasePanel({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function SortablePhaseRow({
+  phase,
+  phases,
+  onEdit,
+  onDelete,
+  statusIcon,
+}: {
+  phase: Phase;
+  phases: Phase[];
+  onEdit: () => void;
+  onDelete: () => void;
+  statusIcon: (status: string) => string;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: phase.id });
+
+  const depPhase = phase.dependencies?.[0]
+    ? phases.find((p) => p.id === phase.dependencies![0].depends_on_phase_id)
+    : null;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        gridTemplateColumns: "20px 20px 1fr 120px 80px 180px 160px 24px",
+      }}
+      className={cn(
+        "group grid items-center rounded-md px-2 py-1.5 hover:bg-black/[0.03] cursor-pointer",
+        isDragging && "opacity-50 z-10"
+      )}
+      onClick={onEdit}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center justify-center text-black/20 hover:text-black/50 cursor-grab active:cursor-grabbing"
+      >
+        <GripVertical size={14} />
+      </button>
+      <ProgressIcon value={statusIcon(phase.status)} size={14} />
+      <span className="min-w-0 truncate text-sm text-black/80">
+        {phase.name}
+      </span>
+      <span className="flex items-center gap-1 text-xs text-black/60">
+        {depPhase && (
+          <>
+            <ArrowRight size={11} />
+            {depPhase.name}
+          </>
+        )}
+      </span>
+      <span className="text-xs text-black/60 truncate">
+        {phase.assignee?.display_name ?? ""}
+      </span>
+      <span className="text-xs text-black/60">
+        {phase.start_date && phase.end_date
+          ? `${phase.start_date} 〜 ${phase.end_date}`
+          : ""}
+      </span>
+      <span className="text-xs text-black/60">
+        {(phase.traditional_hours || phase.ai_target_hours || phase.actual_hours)
+          ? `${phase.traditional_hours ?? "-"}h → ${phase.ai_target_hours ?? "-"}h → ${phase.actual_hours ?? "-"}h`
+          : ""}
+      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
+      >
+        <Trash2 size={12} />
+      </button>
     </div>
   );
 }

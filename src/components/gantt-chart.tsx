@@ -2,13 +2,29 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PhaseForm } from "@/components/phase-panel";
 import { MemberSelect } from "@/components/member-select";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type GanttPhase = Phase & {
   assignee?: Member | null;
@@ -190,13 +206,12 @@ function EmptyPhaseRow({
       const endDay = getDayFromX(ev.clientX);
       setDragging(false);
 
-      if (dragStart !== null) {
-        const startDay = Math.min(dragStart, endDay);
-        const finalEnd = Math.max(dragStart, endDay);
-        const startDate = toDateStr(addDays(rangeStart, startDay));
-        const endDate = toDateStr(addDays(rangeStart, finalEnd));
-        onCreateDates(phaseId, startDate, endDate);
-      }
+      const startDay = Math.min(day, endDay);
+      const finalEnd = Math.max(day, endDay);
+      const startDate = toDateStr(addDays(rangeStart, startDay));
+      const endDate = toDateStr(addDays(rangeStart, finalEnd));
+      onCreateDates(phaseId, startDate, endDate);
+
       setDragStart(null);
       setDragEnd(null);
     };
@@ -597,6 +612,40 @@ export function GanttChart({
     });
   };
 
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handlePhaseDragEnd = async (projectId: string, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const proj = ganttProjects.find((p) => p.id === projectId);
+    if (!proj) return;
+
+    const oldIndex = proj.phases.findIndex((p) => p.id === active.id);
+    const newIndex = proj.phases.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = [...proj.phases];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+    const updated = reordered.map((p, i) => ({ ...p, sort_order: i + 1 }));
+
+    // Optimistic update
+    setGanttProjects((prev) =>
+      prev.map((gp) => (gp.id === projectId ? { ...gp, phases: updated } : gp))
+    );
+
+    const changed = updated.filter((p) => p.sort_order !== proj.phases.find((op) => op.id === p.id)?.sort_order);
+    await Promise.all(
+      changed.map((p) =>
+        supabase.from("phases").update({ sort_order: p.sort_order } as never).eq("id", p.id)
+      )
+    );
+  };
+
   if (loading) {
     return <div className="py-8 text-center text-xs text-black/40">読み込み中...</div>;
   }
@@ -628,80 +677,74 @@ export function GanttChart({
             施策 / フェーズ
           </div>
           {/* 行ラベル */}
-          {rows.map((row, i) => {
-            const isEditing = row.type === "phase" && row.phase && editingPhaseId === row.phase.id;
-
-            return (
-              <div key={row.phase?.id ?? row.project.id}>
-                <div
-                  className={cn(
-                    "flex items-center border-b border-black/5 px-3",
-                    row.type === "project" ? "group/row hover:bg-blue-50/70 cursor-pointer" : "pl-8 hover:bg-blue-50/50 cursor-pointer",
-                    isEditing && "bg-blue-50/70"
-                  )}
-                  style={{ height: ROW_HEIGHT }}
-                  onClick={
-                    row.type === "project"
-                      ? () => toggleExpand(row.project.id)
-                      : () => {
-                          if (isEditing) cancelEditPhase();
-                          else startEditPhase(row.phase!);
-                        }
-                  }
-                >
-                  {row.type === "project" ? (
-                    <span className="flex items-center gap-1 text-sm font-medium text-black/80 min-w-0">
-                      <span className="shrink-0">{expandedIds.has(row.project.id) ? <ChevronDown size={13} className="text-black/40" /> : <ChevronRight size={13} className="text-black/40" />}</span>
-                      <span className="flex-1 truncate">{row.project.title}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!expandedIds.has(row.project.id)) toggleExpand(row.project.id);
-                          startAddPhase(row.project.id);
-                        }}
-                        className="shrink-0 opacity-0 group-hover/row:opacity-100 rounded px-1 text-[11px] text-[#4a9eff] hover:bg-[#4a9eff]/10"
-                        title="フェーズを追加"
-                      >
-                        +
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-sm text-black/60 min-w-0">
-                      <span className="shrink-0">
-                        <ProgressIcon value={row.phase!.status === "完了" ? "done" : row.phase!.status === "進行中" ? "active" : "paused"} size={13} />
-                      </span>
-                      <span className="truncate">
-                        {row.phase!.name}
-                        {row.phase!.assignee?.display_name && (
-                          <span className="ml-1.5 text-black/40">({row.phase!.assignee.display_name})</span>
-                        )}
-                      </span>
-                    </span>
-                  )}
-                </div>
-                {isEditing && editForm && (
-                  <>
-                  <div className="fixed inset-0 z-20 bg-black/20" onClick={cancelEditPhase} />
-                  <div
-                    className="fixed left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl border border-black/10 rounded-lg shadow-xl bg-white px-4 py-3"
-                    onClick={(e) => e.stopPropagation()}
+          {ganttProjects.map((proj) => (
+            <div key={proj.id}>
+              {/* プロジェクト行 */}
+              <div
+                className="group/row flex items-center border-b border-black/5 px-3 hover:bg-blue-50/70 cursor-pointer"
+                style={{ height: ROW_HEIGHT }}
+                onClick={() => toggleExpand(proj.id)}
+              >
+                <span className="flex items-center gap-1 text-sm font-medium text-black/80 min-w-0">
+                  <span className="shrink-0">{expandedIds.has(proj.id) ? <ChevronDown size={13} className="text-black/40" /> : <ChevronRight size={13} className="text-black/40" />}</span>
+                  <span className="flex-1 truncate">{proj.title}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!expandedIds.has(proj.id)) toggleExpand(proj.id);
+                      startAddPhase(proj.id);
+                    }}
+                    className="shrink-0 opacity-0 group-hover/row:opacity-100 rounded px-1 text-[11px] text-[#4a9eff] hover:bg-[#4a9eff]/10"
+                    title="フェーズを追加"
                   >
-                    <div className="mb-2 text-xs font-semibold text-black/50">フェーズ編集</div>
-                    <PhaseForm
-                      form={editForm}
-                      setForm={(fn) => setEditForm((prev) => prev ? fn(prev) : prev)}
-                      members={members}
-                      phases={row.project.phases.filter((p) => p.id !== row.phase!.id)}
-                      onSave={handleSavePhase}
-                      onCancel={cancelEditPhase}
-                      isEdit
-                    />
-                  </div>
-                  </>
-                )}
+                    +
+                  </button>
+                </span>
               </div>
-            );
-          })}
+              {/* フェーズ行（ドラッグ並び替え可能） */}
+              {expandedIds.has(proj.id) && (
+                <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={(e) => handlePhaseDragEnd(proj.id, e)}>
+                  <SortableContext items={proj.phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                    {proj.phases.map((phase) => {
+                      const isEditing = editingPhaseId === phase.id;
+                      return (
+                        <div key={phase.id}>
+                          <SortableGanttPhaseLabel
+                            phase={phase}
+                            isEditing={isEditing}
+                            onEdit={() => {
+                              if (isEditing) cancelEditPhase();
+                              else startEditPhase(phase);
+                            }}
+                          />
+                          {isEditing && editForm && (
+                            <>
+                              <div className="fixed inset-0 z-20 bg-black/20" onClick={cancelEditPhase} />
+                              <div
+                                className="fixed left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl border border-black/10 rounded-lg shadow-xl bg-white px-4 py-3"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="mb-2 text-xs font-semibold text-black/50">フェーズ編集</div>
+                                <PhaseForm
+                                  form={editForm}
+                                  setForm={(fn) => setEditForm((prev) => prev ? fn(prev) : prev)}
+                                  members={members}
+                                  phases={proj.phases.filter((p) => p.id !== phase.id)}
+                                  onSave={handleSavePhase}
+                                  onCancel={cancelEditPhase}
+                                  isEdit
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
+              )}
+            </div>
+          ))}
         </div>
 
         {/* 右タイムライン */}
@@ -809,6 +852,62 @@ export function GanttChart({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SortableGanttPhaseLabel({
+  phase,
+  isEditing,
+  onEdit,
+}: {
+  phase: GanttPhase;
+  isEditing: boolean;
+  onEdit: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: phase.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        height: ROW_HEIGHT,
+      }}
+      className={cn(
+        "flex items-center border-b border-black/5 pl-5 pr-3 hover:bg-blue-50/50 cursor-pointer",
+        isEditing && "bg-blue-50/70",
+        isDragging && "opacity-50 z-10 bg-white"
+      )}
+      onClick={onEdit}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="shrink-0 flex items-center justify-center text-black/15 hover:text-black/40 cursor-grab active:cursor-grabbing mr-1"
+      >
+        <GripVertical size={13} />
+      </button>
+      <span className="flex items-center gap-1.5 text-sm text-black/60 min-w-0">
+        <span className="shrink-0">
+          <ProgressIcon value={phase.status === "完了" ? "done" : phase.status === "進行中" ? "active" : "paused"} size={13} />
+        </span>
+        <span className="truncate">
+          {phase.name}
+          {phase.assignee?.display_name && (
+            <span className="ml-1.5 text-black/40">({phase.assignee.display_name})</span>
+          )}
+        </span>
+      </span>
     </div>
   );
 }
