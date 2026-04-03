@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -557,6 +557,17 @@ export function GanttChart({
     setEditForm(null);
   };
 
+  const handleDeletePhase = async (phaseId: string) => {
+    // 楽観的更新
+    setGanttProjects((prev) =>
+      prev.map((gp) => ({
+        ...gp,
+        phases: gp.phases.filter((p) => p.id !== phaseId),
+      }))
+    );
+    await supabase.from("phases").delete().eq("id", phaseId);
+  };
+
   const startAddPhase = (projectId: string) => {
     setAddingForProjectId(projectId);
     setEditingPhaseId(null);
@@ -716,6 +727,7 @@ export function GanttChart({
                               if (isEditing) cancelEditPhase();
                               else startEditPhase(phase);
                             }}
+                            onDelete={() => handleDeletePhase(phase.id)}
                           />
                           {isEditing && editForm && (
                             <>
@@ -860,10 +872,12 @@ function SortableGanttPhaseLabel({
   phase,
   isEditing,
   onEdit,
+  onDelete,
 }: {
   phase: GanttPhase;
   isEditing: boolean;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   const {
     attributes,
@@ -883,7 +897,7 @@ function SortableGanttPhaseLabel({
         height: ROW_HEIGHT,
       }}
       className={cn(
-        "flex items-center border-b border-black/5 pl-5 pr-3 hover:bg-blue-50/50 cursor-pointer",
+        "group/phase flex items-center border-b border-black/5 pl-5 pr-3 hover:bg-blue-50/50 cursor-pointer",
         isEditing && "bg-blue-50/70",
         isDragging && "opacity-50 z-10 bg-white"
       )}
@@ -897,7 +911,7 @@ function SortableGanttPhaseLabel({
       >
         <GripVertical size={13} />
       </button>
-      <span className="flex items-center gap-1.5 text-sm text-black/60 min-w-0">
+      <span className="flex-1 flex items-center gap-1.5 text-sm text-black/60 min-w-0">
         <span className="shrink-0">
           <ProgressIcon value={phase.status === "完了" ? "done" : phase.status === "進行中" ? "active" : "paused"} size={13} />
         </span>
@@ -908,6 +922,15 @@ function SortableGanttPhaseLabel({
           )}
         </span>
       </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="shrink-0 opacity-0 group-hover/phase:opacity-100 rounded p-0.5 text-red-400/50 hover:bg-red-500/10 hover:text-red-400 transition-opacity"
+      >
+        <Trash2 size={12} />
+      </button>
     </div>
   );
 }
