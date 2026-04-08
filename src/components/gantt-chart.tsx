@@ -243,15 +243,23 @@ function EmptyPhaseRow({
   );
 }
 
+const NEXT_PHASE_STATUS: Record<string, string> = {
+  "未着手": "進行中",
+  "進行中": "完了",
+  "完了": "未着手",
+};
+
 // バー
 function GanttBar({
   phase,
   rangeStart,
   onUpdate,
+  onStatusChange,
 }: {
   phase: GanttPhase;
   rangeStart: Date;
   onUpdate: (phaseId: string, startDate: string, endDate: string) => void;
+  onStatusChange: (phaseId: string, newStatus: string) => void;
 }) {
   const dragRef = useRef<{
     type: "move" | "resize-start" | "resize-end";
@@ -393,10 +401,23 @@ function GanttBar({
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-white/30 rounded-l-md"
         onMouseDown={(e) => handleMouseDown(e, "resize-start")}
       />
-      {/* 中央ドラッグ */}
+      {/* 中央ドラッグ / クリックでステータス切替 */}
       <div
         className="flex-1 h-full cursor-grab active:cursor-grabbing flex items-center justify-center overflow-hidden px-2"
-        onMouseDown={(e) => handleMouseDown(e, "move")}
+        onMouseDown={(e) => {
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const onUp = (ev: MouseEvent) => {
+            document.removeEventListener("mouseup", onUp);
+            const dx = Math.abs(ev.clientX - startX);
+            const dy = Math.abs(ev.clientY - startY);
+            if (dx < 4 && dy < 4) {
+              onStatusChange(phase.id, NEXT_PHASE_STATUS[phase.status] ?? "未着手");
+            }
+          };
+          document.addEventListener("mouseup", onUp);
+          handleMouseDown(e, "move");
+        }}
       >
         <span className="text-xs text-white font-medium truncate">
           {phase.name}
@@ -497,6 +518,14 @@ export function GanttChart({
       scrollRef.current.scrollLeft = scrollTo;
     }
   }, [loading, ganttProjects]);
+
+  const handlePhaseStatusChange = async (phaseId: string, newStatus: string) => {
+    await supabase
+      .from("phases")
+      .update({ status: newStatus } as never)
+      .eq("id", phaseId);
+    await loadAllPhases();
+  };
 
   const handleUpdatePhase = async (phaseId: string, startDate: string, endDate: string) => {
     await supabase
@@ -804,6 +833,7 @@ export function GanttChart({
                       phase={row.phase}
                       rangeStart={range.start}
                       onUpdate={handleUpdatePhase}
+                      onStatusChange={handlePhaseStatusChange}
                     />
                   )}
                   {row.type === "phase" && row.phase && !row.phase.start_date && !row.phase.end_date && (
