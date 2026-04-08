@@ -1,7 +1,26 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { Header } from "@/components/header";
 import { ProjectDetail } from "@/components/project-detail";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("projects")
+    .select("title")
+    .eq("id", id)
+    .single();
+
+  return {
+    title: (data as { title: string } | null)?.title ?? "施策詳細",
+  };
+}
 
 export default async function ProjectPage({
   params,

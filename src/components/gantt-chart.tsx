@@ -676,7 +676,7 @@ export function GanttChart({
     }
   }
 
-  const LABEL_WIDTH = 280;
+  const LABEL_WIDTH = 360;
 
   return (
     <div className="overflow-hidden rounded-md border border-black/5 bg-white" style={{ height: "calc(100vh - 140px)" }}>

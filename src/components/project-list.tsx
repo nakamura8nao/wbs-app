@@ -207,6 +207,7 @@ const SortableRow = memo(function SortableRow({
           {project.title}
           <Link
             href={`/projects/${project.id}`}
+            target="_blank"
             onClick={(e) => e.stopPropagation()}
             className="opacity-0 group-hover/title:opacity-100 text-slate-400 hover:text-[#4a9eff] transition-all ml-1"
             title="施策の個別ページを開く"
@@ -329,6 +330,7 @@ const ProjectRow = memo(function ProjectRow({
           {project.title}
           <Link
             href={`/projects/${project.id}`}
+            target="_blank"
             onClick={(e) => e.stopPropagation()}
             className="opacity-0 group-hover/title:opacity-100 text-slate-400 hover:text-[#4a9eff] transition-all ml-1"
             title="施策の個別ページを開く"
