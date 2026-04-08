@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useCallback, useMemo, memo, lazy, Suspense } from "react";
+import { useState, useCallback, useMemo, useRef, memo, lazy, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
@@ -62,6 +63,61 @@ const statusConfig = (status: string) => {
   }
 };
 
+// 行アクションメニュー（三点メニュー + 右クリック共通）
+type MenuAnchor = Element | { getBoundingClientRect: () => DOMRect };
+
+const menuItemClasses = "flex items-center gap-2 px-3 py-2 text-sm text-slate-700 outline-none cursor-default select-none data-highlighted:bg-gray-100 data-highlighted:text-slate-900";
+const menuPopupClasses = "min-w-[140px] rounded-lg bg-white py-1 shadow-lg ring-1 ring-black/10 origin-(--transform-origin) transition-[transform,scale,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+
+function ProjectActionMenu({
+  open,
+  onOpenChange,
+  anchor,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  onTogglePriority,
+  priorityLabel,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  anchor: MenuAnchor | null;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onTogglePriority?: () => void;
+  priorityLabel?: string;
+}) {
+  return (
+    <Menu.Root open={open} onOpenChange={(open) => onOpenChange(open)} modal={false}>
+      <Menu.Portal>
+        <Menu.Positioner anchor={anchor} side="bottom" align="start" sideOffset={4}>
+          <Menu.Popup className={menuPopupClasses}>
+            <Menu.Item className={menuItemClasses} onClick={onEdit}>
+              <Pencil size={14} />
+              編集
+            </Menu.Item>
+            <Menu.Item className={menuItemClasses} onClick={onDuplicate}>
+              <Copy size={14} />
+              複製
+            </Menu.Item>
+            {onTogglePriority && (
+              <Menu.Item className={cn(menuItemClasses, "text-amber-600 data-highlighted:text-amber-700")} onClick={onTogglePriority}>
+                <ArrowUpDown size={14} />
+                {priorityLabel}
+              </Menu.Item>
+            )}
+            <Menu.Item className={cn(menuItemClasses, "text-red-500 data-highlighted:bg-red-50 data-highlighted:text-red-600")} onClick={onDelete}>
+              <Trash2 size={14} />
+              削除
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 // ドラッグ可能な行
 const SortableRow = memo(function SortableRow({
   project,
@@ -96,15 +152,34 @@ const SortableRow = memo(function SortableRow({
     transition,
   };
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const kebabRef = useRef<HTMLButtonElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const x = e.clientX;
+    const y = e.clientY;
+    setMenuAnchor({ getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) });
+    setMenuOpen(true);
+  }, []);
+
+  const handleKebabClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuAnchor(kebabRef.current);
+    setMenuOpen(true);
+  }, []);
+
   return (
     <>
     <tr
       ref={setNodeRef}
       style={style}
       className={cn(
-        "transition-colors hover:bg-gray-50",
+        "group transition-colors hover:bg-gray-50",
         isDragging && "relative z-10 bg-white shadow-md"
       )}
+      onContextMenu={handleContextMenu}
     >
       <td className="w-8 py-3 px-2 text-center">
         <span
@@ -119,13 +194,14 @@ const SortableRow = memo(function SortableRow({
       <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
         {project.priority_undecided ? "-" : project.priority}
       </td>
-      <td className="w-36 py-3 px-4 text-xs text-slate-500 whitespace-nowrap">
-        <span className="flex items-center gap-1">
-          {project.group_lv2 && <GroupLv2Icon value={project.group_lv2} size={20} />}
-          {project.group_lv2 ?? project.group_lv1 ?? "-"}
+      <td className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-xs text-slate-500 whitespace-nowrap">
+        <span className="flex items-center gap-1" title={project.group_lv2 ?? project.group_lv1 ?? undefined}>
+          {project.group_lv2 ? <GroupLv2Icon value={project.group_lv2} size={20} /> : null}
+          <span className="hidden min-[1500px]:inline">{project.group_lv2 ?? project.group_lv1 ?? "-"}</span>
+          {!project.group_lv2 && <span className="min-[1500px]:hidden">-</span>}
         </span>
       </td>
-      <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
+      <td className="min-w-[240px] py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1 group/title">
           {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
@@ -170,19 +246,26 @@ const SortableRow = memo(function SortableRow({
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
       </td>
-      <td className="py-3 px-4">
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">編集</button>
-          <button onClick={onDuplicate} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">複製</button>
-          {onTogglePriority && (
-            <button onClick={onTogglePriority} className="rounded-lg px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors">
-              {project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
-            </button>
-          )}
-          <button onClick={onDelete} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors">削除</button>
-        </div>
+      <td className="w-10 py-3 px-2">
+        <button
+          ref={kebabRef}
+          onClick={handleKebabClick}
+          className="rounded-md p-1 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-slate-600"
+        >
+          <EllipsisVertical size={16} />
+        </button>
       </td>
     </tr>
+    <ProjectActionMenu
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      anchor={menuAnchor}
+      onEdit={onEdit}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
+      onTogglePriority={onTogglePriority}
+      priorityLabel={project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
+    />
     {isExpanded && (
       <tr>
         <td colSpan={13} className="p-0">
@@ -214,15 +297,33 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority?: boolean;
   members: Member[];
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const kebabRef = useRef<HTMLButtonElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const x = e.clientX;
+    const y = e.clientY;
+    setMenuAnchor({ getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) });
+    setMenuOpen(true);
+  }, []);
+
+  const handleKebabClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuAnchor(kebabRef.current);
+    setMenuOpen(true);
+  }, []);
+
   return (
     <>
-    <tr className="transition-colors hover:bg-gray-50">
+    <tr className="group transition-colors hover:bg-gray-50" onContextMenu={handleContextMenu}>
       {!hidePriority && (
         <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
           {project.priority_undecided ? "-" : project.priority}
         </td>
       )}
-      <td className="py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
+      <td className="min-w-[240px] py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1 group/title">
           {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
           {project.title}
@@ -267,14 +368,24 @@ const ProjectRow = memo(function ProjectRow({
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
       </td>
-      <td className="py-3 px-4">
-        <div className="flex gap-1 opacity-0 transition-opacity [tr:hover_&]:opacity-100">
-          <button onClick={onEdit} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">編集</button>
-          <button onClick={onDuplicate} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-gray-50 hover:text-slate-700 transition-colors">複製</button>
-          <button onClick={onDelete} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors">削除</button>
-        </div>
+      <td className="w-10 py-3 px-2">
+        <button
+          ref={kebabRef}
+          onClick={handleKebabClick}
+          className="rounded-md p-1 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-slate-600"
+        >
+          <EllipsisVertical size={16} />
+        </button>
       </td>
     </tr>
+    <ProjectActionMenu
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      anchor={menuAnchor}
+      onEdit={onEdit}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
+    />
     {isExpanded && (
       <tr>
         <td colSpan={9} className="p-0">
@@ -610,8 +721,8 @@ export function ProjectList({ initialProjects, members }: Props) {
               <tr className={theadClasses}>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-                <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">事業</th>
-                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
+                <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                 <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -620,7 +731,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-                <th scope="col" className="w-24 py-3 px-4"></th>
+                <th scope="col" className="w-10 py-3 px-2"></th>
               </tr>
             </thead>
             {activeProjects.length === 0 ? (
@@ -745,7 +856,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                         <thead>
                           <tr className={theadClasses}>
                             <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-                            <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                            <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                             <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
                             <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                             <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -754,7 +865,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                             <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                             <th scope="col" className="w-8 py-3 px-2"></th>
                             <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-                            <th scope="col" className="w-24 py-3 px-4"></th>
+                            <th scope="col" className="w-10 py-3 px-2"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -787,7 +898,7 @@ export function ProjectList({ initialProjects, members }: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr className={theadClasses}>
-                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                 <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -795,7 +906,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
-                <th scope="col" className="w-24 py-3 px-4"></th>
+                <th scope="col" className="w-10 py-3 px-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
