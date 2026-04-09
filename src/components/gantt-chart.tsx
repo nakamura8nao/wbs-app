@@ -71,7 +71,7 @@ function parseDate(s: string): Date {
 function calcRange(projects: GanttProject[]): { start: Date; end: Date } {
   const today = new Date();
   let minDate = addDays(today, -14);
-  let maxDate = addDays(today, 60);
+  let maxDate = addDays(today, 180);
 
   for (const proj of projects) {
     for (const phase of proj.phases) {
