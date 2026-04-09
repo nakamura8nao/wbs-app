@@ -509,13 +509,16 @@ export function GanttChart({
     };
   }, [loading, ganttProjects]);
 
-  // 今日の位置にスクロール
+  // 今日の位置にスクロール（初回のみ）
+  const didInitialScrollRef = useRef(false);
   useEffect(() => {
+    if (didInitialScrollRef.current) return;
     if (!loading && scrollRef.current && ganttProjects.length > 0) {
       const range = calcRange(ganttProjects);
       const todayOffset = diffDays(range.start, new Date());
       const scrollTo = Math.max(0, todayOffset * DAY_WIDTH - 200);
       scrollRef.current.scrollLeft = scrollTo;
+      didInitialScrollRef.current = true;
     }
   }, [loading, ganttProjects]);
 
