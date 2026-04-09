@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS } from "@/lib/constants";
+import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
   DndContext,
@@ -118,6 +118,130 @@ function ProjectActionMenu({
   );
 }
 
+const EmptyPlaceholder = () => <span className="text-slate-400">未設定</span>;
+
+const sizeOptionsWithNone = [
+  { value: "", label: <span className="text-slate-400">未設定</span> },
+  ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label as React.ReactNode })),
+];
+
+const progressOptions = PROGRESS_OPTIONS.map((p) => ({
+  value: p.value,
+  label: (
+    <span className="flex items-center gap-2">
+      <span>{p.label}</span>
+      <span className="text-xs text-slate-500">
+        {p.value === "paused" ? "未着手" : p.value === "active" ? "進行中" : "完了"}
+      </span>
+    </span>
+  ),
+}));
+
+// メンバー選択肢を推奨ロール優先で並び替え
+function memberOptions(members: Member[], preferredRole: string) {
+  const preferred = members.filter((m) => m.role === preferredRole);
+  const others = members.filter((m) => m.role !== preferredRole);
+  const format = (m: Member) => `${m.display_name}${m.role ? ` (${m.role})` : ""}`;
+  return [
+    { value: "", label: <span className="text-slate-400">未設定</span> },
+    ...preferred.map((m) => ({ value: m.id, label: format(m) })),
+    ...others.map((m) => ({ value: m.id, label: format(m) })),
+  ];
+}
+
+// インライン編集用の共通メニューセル
+const inlineCellClasses = "w-full text-left rounded-md px-2 py-1 -mx-2 -my-1 outline-none cursor-pointer";
+
+function InlineMenuCell<T extends string>({
+  value,
+  options,
+  onChange,
+  children,
+  placeholder = "-",
+}: {
+  value: T | null;
+  options: Array<{ value: T; label: React.ReactNode }>;
+  onChange: (value: T) => void;
+  children?: React.ReactNode;
+  placeholder?: string;
+}) {
+  return (
+    <Menu.Root modal={false}>
+      <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
+        {children ?? (value ?? placeholder)}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4}>
+          <Menu.Popup className={menuPopupClasses}>
+            {options.map((opt) => (
+              <Menu.Item
+                key={opt.value}
+                className={cn(menuItemClasses, opt.value === value && "bg-gray-50 font-semibold")}
+                onClick={() => onChange(opt.value)}
+              >
+                {opt.label}
+              </Menu.Item>
+            ))}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
+// インライン日付編集セル
+function InlineDateCell({
+  value,
+  tentative,
+  onChange,
+}: {
+  value: string | null;
+  tentative: boolean;
+  onChange: (value: string | null, tentative: boolean) => void;
+}) {
+  return (
+    <Menu.Root modal={false}>
+      <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
+        {value ? (
+          tentative ? <span className="text-xs text-slate-400">{value} 仮</span> : value
+        ) : "-"}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4}>
+          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")}>
+            <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="date"
+                value={value ?? ""}
+                onChange={(e) => onChange(e.target.value || null, tentative)}
+                className="h-8 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-[#4a9eff]"
+              />
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={tentative}
+                  onChange={(e) => onChange(value, e.target.checked)}
+                  className="h-4 w-4 cursor-pointer"
+                />
+                仮
+              </label>
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => onChange(null, tentative)}
+                  className="text-left text-xs text-slate-500 hover:text-red-500"
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 // ドラッグ可能な行
 const SortableRow = memo(function SortableRow({
   project,
@@ -127,6 +251,7 @@ const SortableRow = memo(function SortableRow({
   onDuplicate,
   onDelete,
   onTogglePriority,
+  onUpdateField,
   members,
 }: {
   project: Project;
@@ -136,6 +261,7 @@ const SortableRow = memo(function SortableRow({
   onDuplicate: () => void;
   onDelete: () => void;
   onTogglePriority?: () => void;
+  onUpdateField: (id: string, patch: Partial<Project>) => void;
   members: Member[];
 }) {
   const {
@@ -217,32 +343,68 @@ const SortableRow = memo(function SortableRow({
         </span>
       </td>
       <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
-        {project.target_date ? (
-          project.target_date_tentative
-            ? <span className="text-xs text-slate-400">{project.target_date} 仮</span>
-            : project.target_date
-        ) : "-"}
+        <InlineDateCell
+          value={project.target_date}
+          tentative={project.target_date_tentative}
+          onChange={(v) => onUpdateField(project.id, { target_date: v })}
+        />
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.director?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.director_id}
+          options={memberOptions(members, "ディレクター")}
+          onChange={(v) => onUpdateField(project.id, { director_id: v || null })}
+        >
+          {project.director?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.designer?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.designer_id}
+          options={memberOptions(members, "デザイナー")}
+          onChange={(v) => onUpdateField(project.id, { designer_id: v || null })}
+        >
+          {project.designer?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.engineer?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.engineer_id}
+          options={memberOptions(members, "エンジニア")}
+          onChange={(v) => onUpdateField(project.id, { engineer_id: v || null })}
+        >
+          {project.engineer?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-24 py-3 px-4 whitespace-nowrap">
-        <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
-          <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
-          {project.status}
-        </span>
+        <InlineMenuCell
+          value={project.status}
+          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+          onChange={(v) => onUpdateField(project.id, { status: v })}
+        >
+          <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
+            <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
+            {project.status}
+          </span>
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
-        {sizeLabel(project.size)}
+        <InlineMenuCell
+          value={project.size ?? ""}
+          options={sizeOptionsWithNone}
+          onChange={(v) => onUpdateField(project.id, { size: v || null })}
+        >
+          {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-8 py-3 px-2 text-center text-sm">
-        <ProgressIcon value={project.progress} />
+        <InlineMenuCell
+          value={project.progress}
+          options={progressOptions}
+          onChange={(v) => onUpdateField(project.id, { progress: v })}
+        >
+          <ProgressIcon value={project.progress} />
+        </InlineMenuCell>
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
@@ -286,6 +448,7 @@ const ProjectRow = memo(function ProjectRow({
   onEdit,
   onDuplicate,
   onDelete,
+  onUpdateField,
   hidePriority,
   members,
 }: {
@@ -295,6 +458,7 @@ const ProjectRow = memo(function ProjectRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onUpdateField: (id: string, patch: Partial<Project>) => void;
   hidePriority?: boolean;
   members: Member[];
 }) {
@@ -340,32 +504,68 @@ const ProjectRow = memo(function ProjectRow({
         </span>
       </td>
       <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
-        {project.target_date ? (
-          project.target_date_tentative
-            ? <span className="text-xs text-slate-400">{project.target_date} 仮</span>
-            : project.target_date
-        ) : "-"}
+        <InlineDateCell
+          value={project.target_date}
+          tentative={project.target_date_tentative}
+          onChange={(v) => onUpdateField(project.id, { target_date: v })}
+        />
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.director?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.director_id}
+          options={memberOptions(members, "ディレクター")}
+          onChange={(v) => onUpdateField(project.id, { director_id: v || null })}
+        >
+          {project.director?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.designer?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.designer_id}
+          options={memberOptions(members, "デザイナー")}
+          onChange={(v) => onUpdateField(project.id, { designer_id: v || null })}
+        >
+          {project.designer?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
-        {project.engineer?.display_name ?? "-"}
+        <InlineMenuCell
+          value={project.engineer_id}
+          options={memberOptions(members, "エンジニア")}
+          onChange={(v) => onUpdateField(project.id, { engineer_id: v || null })}
+        >
+          {project.engineer?.display_name ?? <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-24 py-3 px-4 whitespace-nowrap">
-        <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
-          <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
-          {project.status}
-        </span>
+        <InlineMenuCell
+          value={project.status}
+          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+          onChange={(v) => onUpdateField(project.id, { status: v })}
+        >
+          <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
+            <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
+            {project.status}
+          </span>
+        </InlineMenuCell>
       </td>
       <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
-        {sizeLabel(project.size)}
+        <InlineMenuCell
+          value={project.size ?? ""}
+          options={sizeOptionsWithNone}
+          onChange={(v) => onUpdateField(project.id, { size: v || null })}
+        >
+          {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
+        </InlineMenuCell>
       </td>
       <td className="w-8 py-3 px-2 text-center text-sm">
-        <ProgressIcon value={project.progress} />
+        <InlineMenuCell
+          value={project.progress}
+          options={progressOptions}
+          onChange={(v) => onUpdateField(project.id, { progress: v })}
+        >
+          <ProgressIcon value={project.progress} />
+        </InlineMenuCell>
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         {project.notes ?? ""}
@@ -471,14 +671,20 @@ export function ProjectList({ initialProjects, members }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // 既存の決定済み施策の priority を +1 してずらす
+    const decided = projects.filter((p) => !p.priority_undecided && p.status !== "完了");
+    for (const p of decided) {
+      await supabase.from("projects").update({ priority: p.priority + 1 } as never).eq("id", p.id);
+    }
+
     await supabase.from("projects").insert({
       created_by: user.id,
       title: formData.title,
       group_lv1: formData.group_lv1 || null,
       group_lv2: formData.group_lv2 || null,
       group_lv3: formData.group_lv3 || null,
-      priority: formData.priority,
-      priority_undecided: true,
+      priority: 1,
+      priority_undecided: false,
       target_date: formData.target_date || null,
       target_date_tentative: formData.target_date_tentative,
       director_id: formData.director_id || null,
@@ -554,6 +760,11 @@ export function ProjectList({ initialProjects, members }: Props) {
     await supabase.from("projects").delete().eq("id", id);
     await reload();
   };
+
+  const handleUpdateField = useCallback(async (id: string, patch: Partial<Project>) => {
+    await supabase.from("projects").update(patch as never).eq("id", id);
+    await reload();
+  }, [supabase, reload]);
 
   // D&D完了時：優先順を振り直してDBに保存
   const handleTogglePriority = async (project: Project) => {
@@ -767,6 +978,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                           onDuplicate={() => handleDuplicate(project)}
                           onDelete={() => handleDelete(project.id)}
                           onTogglePriority={() => handleTogglePriority(project)}
+                          onUpdateField={handleUpdateField}
                           members={members}
                         />
                       ))}
@@ -808,6 +1020,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                         onDuplicate={() => handleDuplicate(project)}
                         onDelete={() => handleDelete(project.id)}
                         onTogglePriority={() => handleTogglePriority(project)}
+                        onUpdateField={handleUpdateField}
                         members={members}
                       />
                     ))}
@@ -880,6 +1093,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                               onEdit={() => setEditingProject(project)}
                               onDuplicate={() => handleDuplicate(project)}
                               onDelete={() => handleDelete(project.id)}
+                              onUpdateField={handleUpdateField}
                               members={members}
                             />
                           ))}
@@ -928,6 +1142,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                     onEdit={() => setEditingProject(project)}
                     onDuplicate={() => handleDuplicate(project)}
                     onDelete={() => handleDelete(project.id)}
+                    onUpdateField={handleUpdateField}
                     hidePriority
                     members={members}
                   />
