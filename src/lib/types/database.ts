@@ -67,6 +67,7 @@ export type Database = {
           progress: string;
           size: string | null;
           notes: string | null;
+          proposed_date: string;
           created_at: string;
           updated_at: string;
         };
@@ -88,6 +89,7 @@ export type Database = {
           progress?: string;
           size?: string | null;
           notes?: string | null;
+          proposed_date?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -107,6 +109,7 @@ export type Database = {
           progress?: string;
           size?: string | null;
           notes?: string | null;
+          proposed_date?: string;
           updated_at?: string;
         };
       };

@@ -25,6 +25,7 @@ export type Project = {
   progress: string;
   size: string | null;
   notes: string | null;
+  proposed_date: string;
   created_at: string;
   updated_at: string;
   // JOINで取得する担当者情報

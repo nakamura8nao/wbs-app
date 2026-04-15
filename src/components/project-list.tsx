@@ -120,6 +120,14 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
+// YYYY-MM-DD 同士の日数差（end - start）
+const diffDays = (start: string, end: string): number => {
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const msPerDay = 86400000;
+  return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / msPerDay);
+};
+
 const sizeOptionsWithNone = [
   { value: "", label: <span className="text-slate-400">未設定</span> },
   ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label as React.ReactNode })),
@@ -442,6 +450,7 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField,
   hidePriority,
   hideSize,
+  showProposedDate,
   members,
 }: {
   project: Project;
@@ -453,6 +462,7 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   hidePriority?: boolean;
   hideSize?: boolean;
+  showProposedDate?: boolean;
   members: Member[];
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -542,6 +552,18 @@ const ProjectRow = memo(function ProjectRow({
           </span>
         </InlineMenuCell>
       </td>
+      {showProposedDate && (
+        <td className="w-28 py-3 px-4 text-xs text-body whitespace-nowrap">
+          {project.proposed_date ?? "-"}
+        </td>
+      )}
+      {showProposedDate && (
+        <td className="w-16 py-3 px-4 text-xs text-body whitespace-nowrap text-right">
+          {project.proposed_date && project.target_date
+            ? `${diffDays(project.proposed_date, project.target_date)}日`
+            : "-"}
+        </td>
+      )}
       {!hideSize && (
         <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
           <InlineMenuCell
@@ -689,6 +711,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       progress: formData.progress,
       size: formData.size || null,
       notes: formData.notes || null,
+      proposed_date: new Date().toLocaleDateString("sv-SE"),
     } as never);
 
     await reload();
@@ -745,6 +768,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       progress: "paused",
       size: project.size,
       notes: project.notes,
+      proposed_date: new Date().toLocaleDateString("sv-SE"),
     } as never);
 
     await reload();
@@ -1127,6 +1151,8 @@ export function ProjectList({ initialProjects, members }: Props) {
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
+                <th scope="col" className="w-16 py-3 px-4 text-right text-xs font-medium text-slate-500" data-tooltip="起案日から公開日までの日数">日数</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-10 py-3 px-2"></th>
@@ -1135,7 +1161,7 @@ export function ProjectList({ initialProjects, members }: Props) {
             <tbody className="divide-y divide-slate-100">
               {releasedProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-base text-slate-500">
+                  <td colSpan={11} className="py-16 text-center text-base text-slate-500">
                     公開済みの施策はありません
                   </td>
                 </tr>
@@ -1151,6 +1177,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                     onDelete={() => handleDelete(project.id)}
                     onUpdateField={handleUpdateField}
                     hidePriority
+                    showProposedDate
                     members={members}
                   />
                 ))
