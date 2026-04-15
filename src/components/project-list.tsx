@@ -118,7 +118,7 @@ function ProjectActionMenu({
   );
 }
 
-const EmptyPlaceholder = () => <span className="text-slate-400">未設定</span>;
+const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
 const sizeOptionsWithNone = [
   { value: "", label: <span className="text-slate-400">未設定</span> },
@@ -349,7 +349,7 @@ const SortableRow = memo(function SortableRow({
           onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
         />
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.director_id}
           options={memberOptions(members, "ディレクター")}
@@ -358,7 +358,7 @@ const SortableRow = memo(function SortableRow({
           {project.director?.display_name ?? <EmptyPlaceholder />}
         </InlineMenuCell>
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.designer_id}
           options={memberOptions(members, "デザイナー")}
@@ -367,7 +367,7 @@ const SortableRow = memo(function SortableRow({
           {project.designer?.display_name ?? <EmptyPlaceholder />}
         </InlineMenuCell>
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.engineer_id}
           options={memberOptions(members, "エンジニア")}
@@ -386,15 +386,6 @@ const SortableRow = memo(function SortableRow({
             <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
             {project.status}
           </span>
-        </InlineMenuCell>
-      </td>
-      <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
-        <InlineMenuCell
-          value={project.size ?? ""}
-          options={sizeOptionsWithNone}
-          onChange={(v) => onUpdateField(project.id, { size: v || null })}
-        >
-          {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
         </InlineMenuCell>
       </td>
       <td className="w-8 py-3 px-2 text-center text-sm">
@@ -431,7 +422,7 @@ const SortableRow = memo(function SortableRow({
     />
     {isExpanded && (
       <tr>
-        <td colSpan={13} className="p-0">
+        <td colSpan={12} className="p-0">
           <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
         </td>
       </tr>
@@ -450,6 +441,7 @@ const ProjectRow = memo(function ProjectRow({
   onDelete,
   onUpdateField,
   hidePriority,
+  hideSize,
   members,
 }: {
   project: Project;
@@ -460,6 +452,7 @@ const ProjectRow = memo(function ProjectRow({
   onDelete: () => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   hidePriority?: boolean;
+  hideSize?: boolean;
   members: Member[];
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -510,7 +503,7 @@ const ProjectRow = memo(function ProjectRow({
           onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
         />
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.director_id}
           options={memberOptions(members, "ディレクター")}
@@ -519,7 +512,7 @@ const ProjectRow = memo(function ProjectRow({
           {project.director?.display_name ?? <EmptyPlaceholder />}
         </InlineMenuCell>
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.designer_id}
           options={memberOptions(members, "デザイナー")}
@@ -528,7 +521,7 @@ const ProjectRow = memo(function ProjectRow({
           {project.designer?.display_name ?? <EmptyPlaceholder />}
         </InlineMenuCell>
       </td>
-      <td className="w-20 py-3 px-4 text-sm text-body">
+      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
           value={project.engineer_id}
           options={memberOptions(members, "エンジニア")}
@@ -549,15 +542,17 @@ const ProjectRow = memo(function ProjectRow({
           </span>
         </InlineMenuCell>
       </td>
-      <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
-        <InlineMenuCell
-          value={project.size ?? ""}
-          options={sizeOptionsWithNone}
-          onChange={(v) => onUpdateField(project.id, { size: v || null })}
-        >
-          {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
-        </InlineMenuCell>
-      </td>
+      {!hideSize && (
+        <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
+          <InlineMenuCell
+            value={project.size ?? ""}
+            options={sizeOptionsWithNone}
+            onChange={(v) => onUpdateField(project.id, { size: v || null })}
+          >
+            {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
+          </InlineMenuCell>
+        </td>
+      )}
       <td className="w-8 py-3 px-2 text-center text-sm">
         <InlineMenuCell
           value={project.progress}
@@ -858,11 +853,10 @@ export function ProjectList({ initialProjects, members }: Props) {
         <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
         <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
         <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
         <th scope="col" className="w-8 py-3 px-2"></th>
         <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
         <th scope="col" className="w-10 py-3 px-2"></th>
@@ -956,7 +950,7 @@ export function ProjectList({ initialProjects, members }: Props) {
               {activeProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={13} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={12} className="py-16 text-center text-base text-slate-500">
                       施策がまだありません。「新規作成」から追加してください。
                     </td>
                   </tr>
@@ -964,7 +958,7 @@ export function ProjectList({ initialProjects, members }: Props) {
               ) : decidedProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
+                    <td colSpan={12} className="py-10 text-center text-sm text-slate-500">
                       優先順位が決定済みの施策はありません。
                     </td>
                   </tr>
@@ -1016,7 +1010,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                   {undecidedGrouped.map((group) => (
                     <tbody key={group.lv2} className="divide-y divide-slate-100">
                       <tr>
-                        <td colSpan={13} className="p-0">
+                        <td colSpan={12} className="p-0">
                           <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
                             <GroupLv2Icon value={group.lv2} size={16} />
                             <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
@@ -1086,11 +1080,10 @@ export function ProjectList({ initialProjects, members }: Props) {
                             <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
                             <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                             <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                             <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-                            <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                             <th scope="col" className="w-8 py-3 px-2"></th>
                             <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
                             <th scope="col" className="w-10 py-3 px-2"></th>
@@ -1107,6 +1100,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                               onDuplicate={() => handleDuplicate(project)}
                               onDelete={() => handleDelete(project.id)}
                               onUpdateField={handleUpdateField}
+                              hideSize
                               members={members}
                             />
                           ))}
@@ -1129,9 +1123,9 @@ export function ProjectList({ initialProjects, members }: Props) {
               <tr className={theadClasses}>
                 <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                 <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
