@@ -74,6 +74,7 @@ export function ProjectDetail({
         progress: formData.progress,
         size: formData.size || null,
         notes: formData.notes || null,
+        proposed_date: formData.proposed_date || undefined,
       } as never)
       .eq("id", project.id)
       .select(`
@@ -128,6 +129,7 @@ export function ProjectDetail({
         <h3 className="text-xs font-semibold text-black/40 tracking-wide mb-4">施策情報</h3>
         <div className="grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-4">
           <InfoItem label="事業" value={[project.group_lv2, project.group_lv3].filter(Boolean).join(" / ") || project.group_lv1 || "-"} />
+          <InfoItem label="起案日" value={project.proposed_date ?? "-"} />
           <InfoItem label="目標日" value={
             project.target_date
               ? project.target_date_tentative ? `${project.target_date} (仮)` : project.target_date

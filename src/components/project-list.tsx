@@ -711,7 +711,7 @@ export function ProjectList({ initialProjects, members }: Props) {
       progress: formData.progress,
       size: formData.size || null,
       notes: formData.notes || null,
-      proposed_date: new Date().toLocaleDateString("sv-SE"),
+      proposed_date: formData.proposed_date || new Date().toLocaleDateString("sv-SE"),
     } as never);
 
     await reload();
@@ -738,6 +738,7 @@ export function ProjectList({ initialProjects, members }: Props) {
         progress: formData.progress,
         size: formData.size || null,
         notes: formData.notes || null,
+        proposed_date: formData.proposed_date || undefined,
       } as never)
       .eq("id", editingProject.id);
 

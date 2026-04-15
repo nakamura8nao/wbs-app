@@ -31,6 +31,8 @@ type Props = {
   defaultValues?: Project;
 };
 
+const todayLocal = () => new Date().toLocaleDateString("sv-SE");
+
 const EMPTY_FORM: ProjectFormData = {
   title: "",
   group_lv1: "",
@@ -46,6 +48,7 @@ const EMPTY_FORM: ProjectFormData = {
   progress: "paused",
   size: "",
   notes: "",
+  proposed_date: "",
 };
 
 function FormField({
@@ -140,9 +143,10 @@ export function ProjectDialog({
         progress: defaultValues.progress,
         size: defaultValues.size ?? "",
         notes: defaultValues.notes ?? "",
+        proposed_date: defaultValues.proposed_date ?? "",
       });
     } else {
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM, proposed_date: todayLocal() });
     }
   }, [defaultValues, open]);
 
@@ -251,30 +255,40 @@ export function ProjectDialog({
               />
             </FormField>
 
-            <FormField label="公開目安">
-              <div className="flex items-center gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="起案日">
                 <Input
                   type="date"
-                  value={form.target_date}
-                  onChange={(e) => update("target_date", e.target.value)}
+                  value={form.proposed_date}
+                  onChange={(e) => update("proposed_date", e.target.value)}
                   className="w-48"
                 />
-                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-500">
-                  <input
-                    type="checkbox"
-                    checked={form.target_date_tentative}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        target_date_tentative: e.target.checked,
-                      }))
-                    }
-                    className="cursor-pointer"
+              </FormField>
+              <FormField label="公開目安">
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="date"
+                    value={form.target_date}
+                    onChange={(e) => update("target_date", e.target.value)}
+                    className="w-48"
                   />
-                  仮
-                </label>
-              </div>
-            </FormField>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-sm text-slate-500">
+                    <input
+                      type="checkbox"
+                      checked={form.target_date_tentative}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          target_date_tentative: e.target.checked,
+                        }))
+                      }
+                      className="cursor-pointer"
+                    />
+                    仮
+                  </label>
+                </div>
+              </FormField>
+            </div>
           </FormSection>
 
           {/* 担当者 */}

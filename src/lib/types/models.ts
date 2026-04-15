@@ -81,4 +81,5 @@ export type ProjectFormData = {
   progress: string;
   size: string;
   notes: string;
+  proposed_date: string;
 };
