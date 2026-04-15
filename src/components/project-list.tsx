@@ -346,7 +346,7 @@ const SortableRow = memo(function SortableRow({
         <InlineDateCell
           value={project.target_date}
           tentative={project.target_date_tentative}
-          onChange={(v) => onUpdateField(project.id, { target_date: v })}
+          onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
         />
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
@@ -507,7 +507,7 @@ const ProjectRow = memo(function ProjectRow({
         <InlineDateCell
           value={project.target_date}
           tentative={project.target_date_tentative}
-          onChange={(v) => onUpdateField(project.id, { target_date: v })}
+          onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
         />
       </td>
       <td className="w-20 py-3 px-4 text-sm text-body">
