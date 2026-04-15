@@ -850,6 +850,26 @@ export function ProjectList({ initialProjects, members }: Props) {
 
   const theadClasses = "border-b border-slate-200 bg-gray-50";
 
+  const priorityTableHead = (
+    <thead>
+      <tr className={theadClasses}>
+        <th scope="col" className="w-8 py-3 px-2"></th>
+        <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
+        <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
+        <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+        <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+        <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
+        <th scope="col" className="w-8 py-3 px-2"></th>
+        <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
+        <th scope="col" className="w-10 py-3 px-2"></th>
+      </tr>
+    </thead>
+  );
+
   return (
     <div>
       {/* ヘッダー + ビュー切替 */}
@@ -928,36 +948,28 @@ export function ProjectList({ initialProjects, members }: Props) {
 
       {/* 優先度順ビュー（D&D対応） */}
       {viewMode === "priority" && (
-        <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={theadClasses}>
-                <th scope="col" className="w-8 py-3 px-2"></th>
-                <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-                <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
-                <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
-                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
-                <th scope="col" className="w-8 py-3 px-2"></th>
-                <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-                <th scope="col" className="w-10 py-3 px-2"></th>
-              </tr>
-            </thead>
-            {activeProjects.length === 0 ? (
-              <tbody>
-                <tr>
-                  <td colSpan={13} className="py-16 text-center text-base text-slate-500">
-                    施策がまだありません。「新規作成」から追加してください。
-                  </td>
-                </tr>
-              </tbody>
-            ) : (
-              <>
-                {/* 決定済みセクション */}
+        <div className="space-y-6">
+          {/* 決定済みカード */}
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <table className="w-full text-sm">
+              {priorityTableHead}
+              {activeProjects.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={13} className="py-16 text-center text-base text-slate-500">
+                      施策がまだありません。「新規作成」から追加してください。
+                    </td>
+                  </tr>
+                </tbody>
+              ) : decidedProjects.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
+                      優先順位が決定済みの施策はありません。
+                    </td>
+                  </tr>
+                </tbody>
+              ) : (
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
@@ -985,50 +997,51 @@ export function ProjectList({ initialProjects, members }: Props) {
                     </tbody>
                   </SortableContext>
                 </DndContext>
+              )}
+            </table>
+          </div>
 
-                {/* 区切り線 */}
-                <tbody>
-                  <tr>
-                    <td colSpan={13} className="p-0">
-                      <div className="flex items-center gap-4 px-4 py-3 bg-gray-50">
-                        <div className="flex-1 border-t border-slate-200" />
-                        <span className="text-xs font-medium text-amber-700 whitespace-nowrap">優先順位 未決定</span>
-                        <div className="flex-1 border-t border-slate-200" />
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-
-                {/* 未決定セクション（グループ別） */}
-                {undecidedGrouped.map((group) => (
-                  <tbody key={group.lv2} className="divide-y divide-slate-100">
-                    <tr>
-                      <td colSpan={13} className="p-0">
-                        <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
-                          <GroupLv2Icon value={group.lv2} size={16} />
-                          <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
-                        </div>
-                      </td>
-                    </tr>
-                    {group.items.map((project) => (
-                      <SortableRow
-                        key={project.id}
-                        project={project}
-                        isExpanded={expandedProjectId === project.id}
-                        onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                        onEdit={() => setEditingProject(project)}
-                        onDuplicate={() => handleDuplicate(project)}
-                        onDelete={() => handleDelete(project.id)}
-                        onTogglePriority={() => handleTogglePriority(project)}
-                        onUpdateField={handleUpdateField}
-                        members={members}
-                      />
-                    ))}
-                  </tbody>
-                ))}
-              </>
-            )}
-          </table>
+          {/* 未決定カード */}
+          {undecidedProjects.length > 0 && (
+            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-hidden">
+              <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  <h3 className="text-sm font-semibold text-amber-900">優先順位 未決定</h3>
+                </div>
+                <span className="text-xs text-amber-700">{undecidedProjects.length}件</span>
+              </div>
+              <table className="w-full text-sm">
+                {priorityTableHead}
+                  {undecidedGrouped.map((group) => (
+                    <tbody key={group.lv2} className="divide-y divide-slate-100">
+                      <tr>
+                        <td colSpan={13} className="p-0">
+                          <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
+                            <GroupLv2Icon value={group.lv2} size={16} />
+                            <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.items.map((project) => (
+                        <SortableRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onTogglePriority={() => handleTogglePriority(project)}
+                          onUpdateField={handleUpdateField}
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  ))}
+              </table>
+            </div>
+          )}
         </div>
       )}
 
