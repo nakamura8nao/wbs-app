@@ -623,12 +623,18 @@ export function ProjectList({ initialProjects, members }: Props) {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
+  const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
 
-  // メンバーフィルタ
+  // メンバー + 着手状況フィルタ
   const filterProject = useCallback((p: Project) => {
-    if (!filterMemberId) return true;
-    return p.director_id === filterMemberId || p.designer_id === filterMemberId || p.engineer_id === filterMemberId;
-  }, [filterMemberId]);
+    if (filterMemberId) {
+      const matched = p.director_id === filterMemberId || p.designer_id === filterMemberId || p.engineer_id === filterMemberId;
+      if (!matched) return false;
+    }
+    if (filterStartStatus === "not_started" && p.status !== "未着手") return false;
+    if (filterStartStatus === "started" && p.status === "未着手") return false;
+    return true;
+  }, [filterMemberId, filterStartStatus]);
 
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
@@ -954,6 +960,16 @@ export function ProjectList({ initialProjects, members }: Props) {
                 {m.display_name}{m.role ? ` (${m.role})` : ""}
               </option>
             ))}
+          </select>
+          {/* 着手状況フィルター */}
+          <select
+            value={filterStartStatus}
+            onChange={(e) => setFilterStartStatus(e.target.value as "" | "not_started" | "started")}
+            className="h-9 rounded-lg border border-white/15 bg-white/8 px-3 text-sm text-white/70 outline-none cursor-pointer backdrop-blur-sm focus:ring-2 focus:ring-primary-400/30"
+          >
+            <option value="">全ての着手状況</option>
+            <option value="not_started">未着手のみ</option>
+            <option value="started">着手中</option>
           </select>
         </div>
         <button
