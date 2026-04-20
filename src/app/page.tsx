@@ -21,6 +21,11 @@ export default async function Home() {
     `)
     .order("priority", { ascending: true });
 
+  const { data: phaseAssignees } = await supabase
+    .from("phases")
+    .select("project_id, assignee_id")
+    .not("assignee_id", "is", null);
+
   const { data: members } = await supabase
     .from("members")
     .select("*")
@@ -32,6 +37,7 @@ export default async function Home() {
       <main className="mx-auto max-w-[1600px] px-5 py-4 pb-8">
         <ProjectList
           initialProjects={projects ?? []}
+          initialPhaseAssignees={(phaseAssignees ?? []) as { project_id: string; assignee_id: string }[]}
           members={members ?? []}
         />
       </main>

@@ -70,12 +70,14 @@ export function PhasePanel({
   directorId,
   designerId,
   engineerId,
+  onPhasesChange,
 }: {
   projectId: string;
   members: Member[];
   directorId?: string | null;
   designerId?: string | null;
   engineerId?: string | null;
+  onPhasesChange?: () => void;
 }) {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,7 @@ export function PhasePanel({
         }));
         await supabase.from("phases").insert(rows as never[]);
         await loadPhases();
+        onPhasesChange?.();
       }
     });
   }, [projectId]);
@@ -157,6 +160,7 @@ export function PhasePanel({
     setForm(EMPTY_FORM);
     setAddingNew(false);
     await loadPhases();
+    onPhasesChange?.();
   };
 
   const handleUpdate = async () => {
@@ -192,11 +196,13 @@ export function PhasePanel({
     setEditingId(null);
     setForm(EMPTY_FORM);
     await loadPhases();
+    onPhasesChange?.();
   };
 
   const handleDelete = async (id: string) => {
     await supabase.from("phases").delete().eq("id", id);
     await loadPhases();
+    onPhasesChange?.();
   };
 
   const startEdit = (phase: Phase) => {

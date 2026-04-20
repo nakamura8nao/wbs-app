@@ -30,8 +30,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 
+type PhaseAssigneeRow = { project_id: string; assignee_id: string };
+
 type Props = {
   initialProjects: Project[];
+  initialPhaseAssignees: PhaseAssigneeRow[];
   members: Member[];
 };
 
@@ -260,6 +263,7 @@ const SortableRow = memo(function SortableRow({
   onDelete,
   onTogglePriority,
   onUpdateField,
+  onPhasesChange,
   members,
 }: {
   project: Project;
@@ -270,6 +274,7 @@ const SortableRow = memo(function SortableRow({
   onDelete: () => void;
   onTogglePriority?: () => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
+  onPhasesChange?: () => void;
   members: Member[];
 }) {
   const {
@@ -431,7 +436,7 @@ const SortableRow = memo(function SortableRow({
     {isExpanded && (
       <tr>
         <td colSpan={12} className="p-0">
-          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
+          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
     )}
@@ -448,6 +453,7 @@ const ProjectRow = memo(function ProjectRow({
   onDuplicate,
   onDelete,
   onUpdateField,
+  onPhasesChange,
   hidePriority,
   hideSize,
   showProposedDate,
@@ -460,6 +466,7 @@ const ProjectRow = memo(function ProjectRow({
   onDuplicate: () => void;
   onDelete: () => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
+  onPhasesChange?: () => void;
   hidePriority?: boolean;
   hideSize?: boolean;
   showProposedDate?: boolean;
@@ -608,7 +615,7 @@ const ProjectRow = memo(function ProjectRow({
     {isExpanded && (
       <tr>
         <td colSpan={9} className="p-0">
-          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} />
+          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
     )}
@@ -616,8 +623,23 @@ const ProjectRow = memo(function ProjectRow({
   );
 });
 
-export function ProjectList({ initialProjects, members }: Props) {
+export function ProjectList({ initialProjects, initialPhaseAssignees, members }: Props) {
   const [projects, setProjects] = useState(initialProjects);
+  const [phaseAssignees, setPhaseAssignees] = useState(initialPhaseAssignees);
+
+  const phaseAssigneesByProjectId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const row of phaseAssignees) {
+      if (!row.assignee_id) continue;
+      let set = map.get(row.project_id);
+      if (!set) {
+        set = new Set<string>();
+        map.set(row.project_id, set);
+      }
+      set.add(row.assignee_id);
+    }
+    return map;
+  }, [phaseAssignees]);
   const [viewMode, setViewMode] = useState<ViewMode>("priority");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -626,15 +648,18 @@ export function ProjectList({ initialProjects, members }: Props) {
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
 
   // メンバー + 着手状況フィルタ
+  // メンバー絞り込みは施策の director/designer/engineer に加え、フェーズ担当者も対象にする
+  // （1施策を複数エンジニアで分担する場合、フェーズ側にのみ担当者が入るケースがあるため）
   const filterProject = useCallback((p: Project) => {
     if (filterMemberId) {
-      const matched = p.director_id === filterMemberId || p.designer_id === filterMemberId || p.engineer_id === filterMemberId;
-      if (!matched) return false;
+      const matchedAtProject = p.director_id === filterMemberId || p.designer_id === filterMemberId || p.engineer_id === filterMemberId;
+      const matchedAtPhase = phaseAssigneesByProjectId.get(p.id)?.has(filterMemberId) ?? false;
+      if (!matchedAtProject && !matchedAtPhase) return false;
     }
     if (filterStartStatus === "not_started" && p.status !== "未着手") return false;
     if (filterStartStatus === "started" && p.status === "未着手") return false;
     return true;
-  }, [filterMemberId, filterStartStatus]);
+  }, [filterMemberId, filterStartStatus, phaseAssigneesByProjectId]);
 
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
@@ -677,18 +702,29 @@ export function ProjectList({ initialProjects, members }: Props) {
     })
   );
 
-  const reload = useCallback(async () => {
+  const reloadPhaseAssignees = useCallback(async () => {
     const { data } = await supabase
-      .from("projects")
-      .select(`
-        *,
-        director:members!projects_director_id_fkey(id, display_name, role),
-        engineer:members!projects_engineer_id_fkey(id, display_name, role),
-        designer:members!projects_designer_id_fkey(id, display_name, role)
-      `)
-      .order("priority", { ascending: true });
-    if (data) setProjects(data);
+      .from("phases")
+      .select("project_id, assignee_id")
+      .not("assignee_id", "is", null);
+    if (data) setPhaseAssignees(data as PhaseAssigneeRow[]);
   }, [supabase]);
+
+  const reload = useCallback(async () => {
+    const [{ data }] = await Promise.all([
+      supabase
+        .from("projects")
+        .select(`
+          *,
+          director:members!projects_director_id_fkey(id, display_name, role),
+          engineer:members!projects_engineer_id_fkey(id, display_name, role),
+          designer:members!projects_designer_id_fkey(id, display_name, role)
+        `)
+        .order("priority", { ascending: true }),
+      reloadPhaseAssignees(),
+    ]);
+    if (data) setProjects(data);
+  }, [supabase, reloadPhaseAssignees]);
 
   const handleCreate = async (formData: ProjectFormData) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1026,6 +1062,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                           onDelete={() => handleDelete(project.id)}
                           onTogglePriority={() => handleTogglePriority(project)}
                           onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
                           members={members}
                         />
                       ))}
@@ -1069,6 +1106,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                           onDelete={() => handleDelete(project.id)}
                           onTogglePriority={() => handleTogglePriority(project)}
                           onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
                           members={members}
                         />
                       ))}
@@ -1141,6 +1179,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                               onDuplicate={() => handleDuplicate(project)}
                               onDelete={() => handleDelete(project.id)}
                               onUpdateField={handleUpdateField}
+                              onPhasesChange={reloadPhaseAssignees}
                               hideSize
                               members={members}
                             />
@@ -1193,6 +1232,7 @@ export function ProjectList({ initialProjects, members }: Props) {
                     onDuplicate={() => handleDuplicate(project)}
                     onDelete={() => handleDelete(project.id)}
                     onUpdateField={handleUpdateField}
+                    onPhasesChange={reloadPhaseAssignees}
                     hidePriority
                     showProposedDate
                     members={members}
