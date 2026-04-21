@@ -565,9 +565,9 @@ const ProjectRow = memo(function ProjectRow({
         </td>
       )}
       {showProposedDate && (
-        <td className="w-16 py-3 px-4 text-xs text-body whitespace-nowrap text-right">
+        <td className="w-28 py-3 px-4 text-xs text-body whitespace-nowrap text-right">
           {project.proposed_date && project.target_date
-            ? `${diffDays(project.proposed_date, project.target_date)}日`
+            ? `${diffDays(project.proposed_date, project.target_date) + 1}日`
             : "-"}
         </td>
       )}
@@ -1208,7 +1208,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
                 <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
-                <th scope="col" className="w-16 py-3 px-4 text-right text-xs font-medium text-slate-500" data-tooltip="起案日から公開日までの日数">日数</th>
+                <th scope="col" className="w-28 py-3 px-4 text-right text-xs font-medium text-slate-500 whitespace-nowrap" data-tooltip="起案日と公開日が同日の場合は1日">起案日からの日数</th>
                 <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
                 <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-10 py-3 px-2"></th>
