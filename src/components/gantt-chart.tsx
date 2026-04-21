@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { ChevronDown, ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,57 @@ function calcRange(projects: GanttProject[]): { start: Date; end: Date } {
   }
 
   return { start: minDate, end: maxDate };
+}
+
+// ホバー時に全文を表示するツールチップ
+// - tooltip を指定した場合はホバーで常に表示
+// - 指定しない場合は truncate で省略されたときだけ表示
+function HoverTooltip({
+  text,
+  tooltip,
+  className,
+  children,
+}: {
+  text: string;
+  tooltip?: React.ReactNode;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const handleEnter = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (!tooltip && el.scrollWidth <= el.clientWidth) return;
+    const rect = el.getBoundingClientRect();
+    setPos({ x: rect.left, y: rect.bottom + 4 });
+  };
+
+  const handleLeave = () => setPos(null);
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className={className}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+      >
+        {children ?? text}
+      </span>
+      {pos && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed z-[100] max-w-xs whitespace-normal break-words rounded-lg bg-slate-600 px-2.5 py-1.5 text-xs text-white shadow-sm pointer-events-none"
+            style={{ left: pos.x, top: pos.y }}
+          >
+            {tooltip ?? text}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
 }
 
 // 日付ヘッダー
@@ -716,21 +768,42 @@ export function GanttChart({
         {/* 左ラベル列 */}
         <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
           {/* ヘッダー */}
-          <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex items-center px-3 text-xs font-medium text-black/50" style={{ height: HEADER_HEIGHT }}>
-            施策 / フェーズ
+          <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex" style={{ height: HEADER_HEIGHT }}>
+            <div className="flex-1 min-w-0 flex items-center px-3 text-xs font-medium text-black/50">
+              施策 / フェーズ
+            </div>
+            <div className="w-16 shrink-0 flex items-center px-2 text-xs font-medium text-black/50 border-l border-black/5">
+              担当
+            </div>
+            <div className="w-6 shrink-0" />
           </div>
           {/* 行ラベル */}
           {ganttProjects.map((proj) => (
             <div key={proj.id}>
               {/* プロジェクト行 */}
               <div
-                className="group/row flex items-center border-b border-black/5 px-3 hover:bg-blue-50/70 cursor-pointer"
+                className="group/row flex items-center border-b border-black/5 hover:bg-blue-50/70 cursor-pointer"
                 style={{ height: ROW_HEIGHT }}
                 onClick={() => toggleExpand(proj.id)}
               >
-                <span className="flex items-center gap-1 text-sm font-medium text-black/80 min-w-0">
+                <div className="flex-1 min-w-0 flex items-center gap-1 px-3">
                   <span className="shrink-0">{expandedIds.has(proj.id) ? <ChevronDown size={13} className="text-black/40" /> : <ChevronRight size={13} className="text-black/40" />}</span>
-                  <span className="flex-1 truncate">{proj.title}</span>
+                  <div className="flex-1 min-w-0">
+                    <HoverTooltip
+                      text={proj.title}
+                      tooltip={
+                        <div>
+                          <div className="font-medium">{proj.title}</div>
+                          <div className="mt-1 space-y-0.5 border-t border-white/20 pt-1 text-white/80">
+                            <div>ディレクター: {proj.director?.display_name ?? "—"}</div>
+                            <div>デザイナー: {proj.designer?.display_name ?? "—"}</div>
+                            <div>エンジニア: {proj.engineer?.display_name ?? "—"}</div>
+                          </div>
+                        </div>
+                      }
+                      className="block truncate text-sm font-medium text-black/80"
+                    />
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -742,7 +815,9 @@ export function GanttChart({
                   >
                     +
                   </button>
-                </span>
+                </div>
+                <div className="w-16 shrink-0 border-l border-black/5" />
+                <div className="w-6 shrink-0" />
               </div>
               {/* フェーズ行（ドラッグ並び替え可能） */}
               {expandedIds.has(proj.id) && (
@@ -930,40 +1005,57 @@ function SortableGanttPhaseLabel({
         height: ROW_HEIGHT,
       }}
       className={cn(
-        "group/phase flex items-center border-b border-black/5 pl-5 pr-3 hover:bg-blue-50/50 cursor-pointer",
+        "group/phase flex items-center border-b border-black/5 hover:bg-blue-50/50 cursor-pointer",
         isEditing && "bg-blue-50/70",
         isDragging && "opacity-50 z-10 bg-white"
       )}
       onClick={onEdit}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-        className="shrink-0 flex items-center justify-center text-black/15 hover:text-black/40 cursor-grab active:cursor-grabbing mr-1"
-      >
-        <GripVertical size={13} />
-      </button>
-      <span className="flex-1 flex items-center gap-1.5 text-sm text-black/60 min-w-0">
+      {/* 名前 */}
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 pl-5 pr-2">
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 flex items-center justify-center text-black/15 hover:text-black/40 cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical size={13} />
+        </button>
         <span className="shrink-0">
           <ProgressIcon value={phase.status === "完了" ? "done" : phase.status === "進行中" ? "active" : "paused"} size={13} />
         </span>
-        <span className="truncate">
-          {phase.name}
-          {phase.assignee?.display_name && (
-            <span className="ml-1.5 text-black/40">({phase.assignee.display_name})</span>
-          )}
-        </span>
-      </span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="shrink-0 opacity-0 group-hover/phase:opacity-100 rounded p-0.5 text-red-400/50 hover:bg-red-500/10 hover:text-red-400 transition-opacity"
-      >
-        <Trash2 size={12} />
-      </button>
+        <div className="flex-1 min-w-0">
+          <HoverTooltip
+            text={phase.name}
+            className="block truncate text-sm text-black/60"
+          />
+        </div>
+      </div>
+      {/* 担当 */}
+      <div className="w-16 shrink-0 flex items-center px-2 border-l border-black/5">
+        {phase.assignee?.display_name ? (
+          <div className="flex-1 min-w-0">
+            <HoverTooltip
+              text={phase.assignee.display_name}
+              className="block truncate text-xs text-black/50"
+            />
+          </div>
+        ) : (
+          <span className="text-xs text-black/20">—</span>
+        )}
+      </div>
+      {/* 削除 */}
+      <div className="w-6 shrink-0 flex items-center justify-center">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="opacity-0 group-hover/phase:opacity-100 rounded p-0.5 text-red-400/50 hover:bg-red-500/10 hover:text-red-400 transition-opacity"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
     </div>
   );
 }
