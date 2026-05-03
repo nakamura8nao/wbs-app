@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/", label: "施策一覧" },
   { href: "/members", label: "メンバー" },
   { href: "/snapshots", label: "スナップショット" },
+  { href: "/settings/tokens", label: "APIトークン" },
 ];
 
 export function Header({ children }: { children?: React.ReactNode }) {

@@ -23,6 +23,7 @@ export type Database = {
           display_name?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       members: {
         Row: {
@@ -47,6 +48,7 @@ export type Database = {
           role?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       projects: {
         Row: {
@@ -112,6 +114,7 @@ export type Database = {
           proposed_date?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       phases: {
         Row: {
@@ -156,6 +159,33 @@ export type Database = {
           actual_hours?: number | null;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      api_tokens: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          token_hash: string;
+          last_used_at: string | null;
+          revoked_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          token_hash: string;
+          last_used_at?: string | null;
+          revoked_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          last_used_at?: string | null;
+          revoked_at?: string | null;
+        };
+        Relationships: [];
       };
       phase_dependencies: {
         Row: {
@@ -174,7 +204,10 @@ export type Database = {
           phase_id?: string;
           depends_on_phase_id?: string;
         };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 };
