@@ -336,6 +336,7 @@ const SortableRow = memo(function SortableRow({
   onUpdateField,
   onPhasesChange,
   members,
+  dragDisabled = false,
 }: {
   project: Project;
   isExpanded: boolean;
@@ -347,6 +348,7 @@ const SortableRow = memo(function SortableRow({
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   members: Member[];
+  dragDisabled?: boolean;
 }) {
   const {
     attributes,
@@ -355,7 +357,7 @@ const SortableRow = memo(function SortableRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: project.id });
+  } = useSortable({ id: project.id, disabled: dragDisabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -392,14 +394,18 @@ const SortableRow = memo(function SortableRow({
       onContextMenu={handleContextMenu}
     >
       <td className="w-8 py-3 px-2 text-center">
-        <span
-          {...attributes}
-          {...listeners}
-          className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
-          title="ドラッグして並び替え"
-        >
-          ⠿
-        </span>
+        {dragDisabled ? (
+          <span className="text-slate-200" title="優先度順のときだけ並び替えできます">⠿</span>
+        ) : (
+          <span
+            {...attributes}
+            {...listeners}
+            className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+            title="ドラッグして並び替え"
+          >
+            ⠿
+          </span>
+        )}
       </td>
       <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
         {project.priority_undecided ? "-" : project.priority}
@@ -720,6 +726,24 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
+  // 優先度順ビューの並び替え。priority=本来の優先度順（D&D可）、target_date=公開目安日順
+  const [sortKey, setSortKey] = useState<"priority" | "target_date">("priority");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const isPrioritySort = sortKey === "priority";
+
+  // 公開目安ヘッダーをクリックしたとき：target_date 昇順 → 降順 → 優先度順に戻る
+  const toggleTargetDateSort = useCallback(() => {
+    if (sortKey !== "target_date") {
+      setSortKey("target_date");
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey("priority");
+    }
+  }, [sortKey, sortDir]);
+
+  const resetToPrioritySort = useCallback(() => setSortKey("priority"), []);
 
   // メンバー + 着手状況フィルタ
   // メンバー絞り込みは施策の director/designer/engineer に加え、フェーズ担当者も対象にする
@@ -739,6 +763,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
   const decidedProjects = useMemo(() => activeProjects.filter((p) => !p.priority_undecided), [activeProjects]);
   const undecidedProjects = useMemo(() => activeProjects.filter((p) => p.priority_undecided), [activeProjects]);
+
+  // 表示用の決定済みリスト。target_date 並び替え時は公開目安日でソート（未設定は末尾）
+  const displayedDecidedProjects = useMemo(() => {
+    if (isPrioritySort) return decidedProjects;
+    const sorted = [...decidedProjects].sort((a, b) => {
+      if (!a.target_date && !b.target_date) return 0;
+      if (!a.target_date) return 1;
+      if (!b.target_date) return -1;
+      return a.target_date.localeCompare(b.target_date);
+    });
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  }, [decidedProjects, isPrioritySort, sortDir]);
 
   // 未決定施策をグループ（lv2）順に並べる
   const undecidedGrouped = useMemo(() => {
@@ -993,10 +1029,28 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     <thead>
       <tr className={theadClasses}>
         <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
-        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", stickyTh)}>#</th>
+        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", stickyTh)}>
+          <button
+            type="button"
+            onClick={resetToPrioritySort}
+            className={cn("cursor-pointer hover:text-slate-700", isPrioritySort && "text-slate-900 font-semibold")}
+            title="優先度順に並べる（リセット）"
+          >
+            #{isPrioritySort && " ▼"}
+          </button>
+        </th>
         <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", stickyTh)}><span className="hidden min-[1500px]:inline">事業</span></th>
         <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>タイトル</th>
-        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>公開目安</th>
+        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>
+          <button
+            type="button"
+            onClick={toggleTargetDateSort}
+            className={cn("cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
+            title="公開目安日で並び替え（昇順→降順→優先度順）"
+          >
+            公開目安{sortKey === "target_date" && (sortDir === "asc" ? " ▲" : " ▼")}
+          </button>
+        </th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Dir</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Des</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
@@ -1125,11 +1179,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   onDragEnd={(event) => handleSectionDragEnd(event, false)}
                 >
                   <SortableContext
-                    items={decidedProjects.map((p) => p.id)}
+                    items={displayedDecidedProjects.map((p) => p.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <tbody className="divide-y divide-slate-100">
-                      {decidedProjects.map((project) => (
+                      {displayedDecidedProjects.map((project) => (
                         <SortableRow
                           key={project.id}
                           project={project}
@@ -1142,6 +1196,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
+                          dragDisabled={!isPrioritySort}
                         />
                       ))}
                     </tbody>
@@ -1186,6 +1241,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
+                          dragDisabled={!isPrioritySort}
                         />
                       ))}
                     </tbody>
