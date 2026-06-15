@@ -123,6 +123,64 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
+// 須川さんチェック（承認）トグル。クリックで承認/未承認を切り替え
+function ApprovalToggle({
+  approved,
+  onToggle,
+  label,
+  title,
+}: {
+  approved: boolean;
+  onToggle: () => void;
+  label: string;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={cn(
+        "inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold transition-colors cursor-pointer",
+        approved
+          ? "bg-emerald-500 text-white"
+          : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+// 承認2ゲートをまとめたセル（実装開始前 / 公開前）
+function ApprovalCell({
+  project,
+  onUpdateField,
+}: {
+  project: Project;
+  onUpdateField: (id: string, patch: Partial<Project>) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <ApprovalToggle
+        approved={project.impl_approved}
+        onToggle={() => onUpdateField(project.id, { impl_approved: !project.impl_approved })}
+        label="実"
+        title="実装開始前チェック（須川さん）"
+      />
+      <ApprovalToggle
+        approved={project.release_approved}
+        onToggle={() => onUpdateField(project.id, { release_approved: !project.release_approved })}
+        label="公"
+        title="公開前チェック（須川さん）"
+      />
+    </div>
+  );
+}
+
 // YYYY-MM-DD 同士の日数差（end - start）
 const diffDays = (start: string, end: string): number => {
   const [sy, sm, sd] = start.split("-").map(Number);
@@ -410,7 +468,10 @@ const SortableRow = memo(function SortableRow({
           <ProgressIcon value={project.progress} />
         </InlineMenuCell>
       </td>
-      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
+      <td className="w-14 py-3 pl-6 pr-2 whitespace-nowrap">
+        <ApprovalCell project={project} onUpdateField={onUpdateField} />
+      </td>
+      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
         {project.notes ?? ""}
       </td>
       <td className="w-10 py-3 px-2">
@@ -435,7 +496,7 @@ const SortableRow = memo(function SortableRow({
     />
     {isExpanded && (
       <tr>
-        <td colSpan={12} className="p-0">
+        <td colSpan={13} className="p-0">
           <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
@@ -925,6 +986,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
         <th scope="col" className="w-8 py-3 px-2"></th>
+        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック：実=実装開始前 / 公=公開前">承認</th>
         <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
         <th scope="col" className="w-10 py-3 px-2"></th>
       </tr>
@@ -1027,7 +1089,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               {activeProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={12} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={13} className="py-16 text-center text-base text-slate-500">
                       施策がまだありません。「新規作成」から追加してください。
                     </td>
                   </tr>
@@ -1035,7 +1097,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               ) : decidedProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={12} className="py-10 text-center text-sm text-slate-500">
+                    <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
                       優先順位が決定済みの施策はありません。
                     </td>
                   </tr>
@@ -1088,7 +1150,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   {undecidedGrouped.map((group) => (
                     <tbody key={group.lv2} className="divide-y divide-slate-100">
                       <tr>
-                        <td colSpan={12} className="p-0">
+                        <td colSpan={13} className="p-0">
                           <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
                             <GroupLv2Icon value={group.lv2} size={16} />
                             <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
