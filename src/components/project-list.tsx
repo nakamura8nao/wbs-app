@@ -1213,7 +1213,12 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Eng</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>状態</th>
         <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
-        <th scope="col" className={cn("w-24 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんのレビューが必要なゲート（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）。青=要レビュー（須川さん待ち）／クリックで巡回：青=未対応 → グレー=完了 → 濃いグレー=不要">要承認</th>
+        <th scope="col" className={cn("w-24 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんのレビューが必要なゲート（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）。青=要レビュー（須川さん待ち）／クリックで巡回：青=未対応 → グレー=完了 → 濃いグレー=不要">
+          <span className="flex flex-col leading-tight">
+            <span>要承認</span>
+            <span className="text-[10px] font-normal text-[#4a9eff]">青=要確認</span>
+          </span>
+        </th>
         <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>備考</th>
         <th scope="col" className={cn("w-10 py-3 px-2", th)}></th>
       </tr>
