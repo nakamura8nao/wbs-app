@@ -272,6 +272,8 @@ function InlineMenuCell<T extends string>({
 }
 
 // インライン日付編集セル
+// 日付選択のたびに確定すると、公開目安ソート中は即再ソートで行が動いて操作しづらい。
+// そのため編集中はローカルのドラフトに溜め、「適用」または閉じたときに一度だけ確定する。
 function InlineDateCell({
   value,
   tentative,
@@ -281,8 +283,24 @@ function InlineDateCell({
   tentative: boolean;
   onChange: (value: string | null, tentative: boolean) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState<string | null>(value);
+  const [draftTentative, setDraftTentative] = useState(tentative);
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      // 開くとき：現在の確定値でドラフトを初期化
+      setDraftValue(value);
+      setDraftTentative(tentative);
+    } else if (draftValue !== value || draftTentative !== tentative) {
+      // 閉じるとき：差分があればここで初めて確定（このタイミングで行が動く）
+      onChange(draftValue, draftTentative);
+    }
+    setOpen(next);
+  };
+
   return (
-    <Menu.Root modal={false}>
+    <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
       <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
         {value ? (
           tentative ? <span className="text-xs text-slate-400">{value} 仮</span> : value
@@ -294,28 +312,37 @@ function InlineDateCell({
             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
               <input
                 type="date"
-                value={value ?? ""}
-                onChange={(e) => onChange(e.target.value || null, tentative)}
+                value={draftValue ?? ""}
+                onChange={(e) => setDraftValue(e.target.value || null)}
                 className="h-8 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-[#4a9eff]"
               />
               <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={tentative}
-                  onChange={(e) => onChange(value, e.target.checked)}
+                  checked={draftTentative}
+                  onChange={(e) => setDraftTentative(e.target.checked)}
                   className="h-4 w-4 cursor-pointer"
                 />
                 仮
               </label>
-              {value && (
+              <div className="flex items-center justify-between">
+                {draftValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setDraftValue(null)}
+                    className="text-left text-xs text-slate-500 hover:text-red-500"
+                  >
+                    クリア
+                  </button>
+                ) : <span />}
                 <button
                   type="button"
-                  onClick={() => onChange(null, tentative)}
-                  className="text-left text-xs text-slate-500 hover:text-red-500"
+                  onClick={() => handleOpenChange(false)}
+                  className="rounded-md bg-primary-500 px-3 py-1 text-xs font-medium text-white hover:bg-primary-400 cursor-pointer"
                 >
-                  クリア
+                  適用
                 </button>
-              )}
+              </div>
             </div>
           </Menu.Popup>
         </Menu.Positioner>
