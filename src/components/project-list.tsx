@@ -155,7 +155,7 @@ function ApprovalToggle({
   );
 }
 
-// 承認2ゲートをまとめたセル（実装開始前 / 公開前）
+// 承認2ゲートをまとめたセル（実装開始OK / 公開OK）
 function ApprovalCell({
   project,
   onUpdateField,
@@ -169,13 +169,13 @@ function ApprovalCell({
         approved={project.impl_approved}
         onToggle={() => onUpdateField(project.id, { impl_approved: !project.impl_approved })}
         label="実"
-        title="実装開始前チェック（須川さん）"
+        title="実装開始OK（須川さん）"
       />
       <ApprovalToggle
         approved={project.release_approved}
         onToggle={() => onUpdateField(project.id, { release_approved: !project.release_approved })}
         label="公"
-        title="公開前チェック（須川さん）"
+        title="公開OK（須川さん）"
       />
     </div>
   );
@@ -986,7 +986,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
         <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック：実=実装開始前 / 公=公開前">承認</th>
+        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック：実=実装開始OK / 公=公開OK">承認</th>
         <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
         <th scope="col" className="w-10 py-3 px-2"></th>
       </tr>
