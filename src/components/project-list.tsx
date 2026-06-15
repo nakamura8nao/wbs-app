@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS } from "@/lib/constants";
+import type { ApprovalState } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
   DndContext,
@@ -123,31 +124,42 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
-// 須川さんチェック（承認）トグル。クリックで承認/未承認を切り替え
+// 須川さんチェック（承認）の3状態。クリックで巡回切り替え
+//   pending（グレー）→ approved（緑）→ skipped（濃いグレー）→ pending
+const approvalConfig: Record<ApprovalState, { cls: string; label: string }> = {
+  pending: { cls: "bg-slate-100 text-slate-400 hover:bg-slate-200", label: "未承認" },
+  approved: { cls: "bg-emerald-500 text-white", label: "承認済み" },
+  skipped: { cls: "bg-slate-500 text-white", label: "承認不要（事後報告）" },
+};
+
+const nextApprovalState = (s: ApprovalState): ApprovalState =>
+  s === "pending" ? "approved" : s === "approved" ? "skipped" : "pending";
+
+// 色の凡例（ツールチップに添える）
+const approvalLegend = "グレー=未承認 / 緑=承認済み / 濃いグレー=承認不要（事後報告）";
+
 function ApprovalToggle({
-  approved,
-  onToggle,
+  state,
+  onChange,
   label,
-  title,
+  gateTitle,
 }: {
-  approved: boolean;
-  onToggle: () => void;
+  state: ApprovalState;
+  onChange: (next: ApprovalState) => void;
   label: string;
-  title: string;
+  gateTitle: string;
 }) {
   return (
     <button
       type="button"
-      title={title}
+      title={`${gateTitle}｜${approvalLegend}（現在: ${approvalConfig[state].label}）`}
       onClick={(e) => {
         e.stopPropagation();
-        onToggle();
+        onChange(nextApprovalState(state));
       }}
       className={cn(
         "inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold transition-colors cursor-pointer",
-        approved
-          ? "bg-emerald-500 text-white"
-          : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+        approvalConfig[state].cls
       )}
     >
       {label}
@@ -166,16 +178,16 @@ function ApprovalCell({
   return (
     <div className="flex items-center gap-1">
       <ApprovalToggle
-        approved={project.impl_approved}
-        onToggle={() => onUpdateField(project.id, { impl_approved: !project.impl_approved })}
+        state={project.impl_approved}
+        onChange={(next) => onUpdateField(project.id, { impl_approved: next })}
         label="実"
-        title="実装開始OK（須川さん）"
+        gateTitle="実装開始OK（須川さん）"
       />
       <ApprovalToggle
-        approved={project.release_approved}
-        onToggle={() => onUpdateField(project.id, { release_approved: !project.release_approved })}
+        state={project.release_approved}
+        onChange={(next) => onUpdateField(project.id, { release_approved: next })}
         label="公"
-        title="公開OK（須川さん）"
+        gateTitle="公開OK（須川さん）"
       />
     </div>
   );
@@ -986,7 +998,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
         <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック：実=実装開始OK / 公=公開OK">承認</th>
+        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック（実=実装開始OK / 公=公開OK）｜クリックで巡回：グレー=未承認 → 緑=承認済み → 濃いグレー=承認不要（事後報告）">承認</th>
         <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
         <th scope="col" className="w-10 py-3 px-2"></th>
       </tr>
