@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 const config = {
   paused: {
     icon: Pause,
-    className: "text-[#4a9eff]",
+    className: "text-emerald-500",
     title: "一時停止",
   },
   active: {
     icon: Play,
-    className: "text-emerald-500",
+    className: "text-[#4a9eff]",
     title: "進行中",
   },
   done: {
