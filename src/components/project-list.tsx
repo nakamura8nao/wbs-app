@@ -1169,11 +1169,15 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   // 上にグローバルヘッダー(45px) + ビュー切替バー(約60px) があるので top を 105px に。
   const stickyTh = "sticky top-[105px] z-[12] bg-gray-50";
 
-  const priorityTableHead = (
+  // sticky=true で優先度順ビュー（1本の長い表）用にヘッダー追従。
+  // グループ表示（Eng別など）は小さい表が積み重なるので sticky を外す。
+  const priorityTableHead = (sticky = true) => {
+    const th = sticky ? stickyTh : "bg-gray-50";
+    return (
     <thead>
       <tr className={theadClasses}>
-        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
-        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", stickyTh)}>
+        <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
+        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", th)}>
           <button
             type="button"
             onClick={resetToPrioritySort}
@@ -1183,9 +1187,9 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
             #{isPrioritySort && " ▼"}
           </button>
         </th>
-        <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", stickyTh)}><span className="hidden min-[1500px]:inline">事業</span></th>
-        <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>タイトル</th>
-        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>
+        <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", th)}><span className="hidden min-[1500px]:inline">事業</span></th>
+        <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>タイトル</th>
+        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>
           <button
             type="button"
             onClick={toggleTargetDateSort}
@@ -1198,17 +1202,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               : <ArrowUpDown size={12} className="opacity-40" />}
           </button>
         </th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Dir</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Des</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>状態</th>
-        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
-        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんの承認が必要なゲート（実=実装開始前 / 公=公開前）。青=要承認（須川さん待ち）／クリックで巡回：青=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">要承認</th>
-        <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>備考</th>
-        <th scope="col" className={cn("w-10 py-3 px-2", stickyTh)}></th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Dir</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Des</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Eng</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>状態</th>
+        <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
+        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんの承認が必要なゲート（実=実装開始前 / 公=公開前）。青=要承認（須川さん待ち）／クリックで巡回：青=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">要承認</th>
+        <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>備考</th>
+        <th scope="col" className={cn("w-10 py-3 px-2", th)}></th>
       </tr>
     </thead>
-  );
+    );
+  };
 
   return (
     <div>
@@ -1230,17 +1235,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               優先度順
             </button>
             <button
-              onClick={() => setViewMode("group")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "group"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              事業別
-            </button>
-            <button
               onClick={() => setViewMode("engineer")}
               className={cn(
                 "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
@@ -1250,6 +1244,17 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               )}
             >
               Eng別
+            </button>
+            <button
+              onClick={() => setViewMode("group")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "group"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+            >
+              事業別
             </button>
             <button
               onClick={() => setViewMode("gantt")}
@@ -1313,7 +1318,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
           {/* 決定済みカード（ヘッダー sticky のため overflow-clip。hidden だと sticky が効かない） */}
           <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-clip">
             <table className="w-full text-sm">
-              {priorityTableHead}
+              {priorityTableHead()}
               {activeProjects.length === 0 ? (
                 <tbody>
                   <tr>
@@ -1375,7 +1380,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                 <span className="text-xs text-amber-700">{undecidedProjects.length}件</span>
               </div>
               <table className="w-full text-sm">
-                {priorityTableHead}
+                {priorityTableHead()}
                   {undecidedGrouped.map((group) => (
                     <tbody key={group.lv2} className="divide-y divide-slate-100">
                       <tr>
@@ -1505,7 +1510,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   <span className="text-xs text-slate-500">{group.items.length}件</span>
                 </div>
                 <table className="w-full text-sm">
-                  {priorityTableHead}
+                  {priorityTableHead(false)}
                   <tbody className="divide-y divide-slate-100">
                     {group.items.map((project) => (
                       <SortableRow
