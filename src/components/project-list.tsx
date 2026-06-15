@@ -125,18 +125,19 @@ function ProjectActionMenu({
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
 // 須川さんチェック（承認）の3状態。クリックで巡回切り替え
-//   pending（グレー）→ approved（緑）→ skipped（濃いグレー）→ pending
+//   pending（薄グレー）→ approved（グレー・完了と同色）→ skipped（濃いグレー）→ pending
+// 承認済みは進捗の「完了」と同じグレー系。3状態を濃淡で判別する。
 const approvalConfig: Record<ApprovalState, { cls: string; label: string }> = {
   pending: { cls: "bg-slate-100 text-slate-400 hover:bg-slate-200", label: "未承認" },
-  approved: { cls: "bg-emerald-500 text-white", label: "承認済み" },
-  skipped: { cls: "bg-slate-500 text-white", label: "承認不要（事後報告）" },
+  approved: { cls: "bg-slate-400 text-white", label: "承認済み" },
+  skipped: { cls: "bg-slate-600 text-white", label: "承認不要（事後報告）" },
 };
 
 const nextApprovalState = (s: ApprovalState): ApprovalState =>
   s === "pending" ? "approved" : s === "approved" ? "skipped" : "pending";
 
 // 色の凡例（ツールチップに添える）
-const approvalLegend = "グレー=未承認 / 緑=承認済み / 濃いグレー=承認不要（事後報告）";
+const approvalLegend = "薄グレー=未承認 / グレー=承認済み / 濃いグレー=承認不要（事後報告）";
 
 function ApprovalToggle({
   state,
@@ -1001,7 +1002,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>状態</th>
         <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
-        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんチェック（実=実装開始OK / 公=公開OK）｜クリックで巡回：グレー=未承認 → 緑=承認済み → 濃いグレー=承認不要（事後報告）">承認</th>
+        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんチェック（実=実装開始OK / 公=公開OK）｜クリックで巡回：薄グレー=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">承認</th>
         <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>備考</th>
         <th scope="col" className={cn("w-10 py-3 px-2", stickyTh)}></th>
       </tr>
