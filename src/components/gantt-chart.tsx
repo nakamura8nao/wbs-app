@@ -769,8 +769,13 @@ export function GanttChart({
         <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
           {/* ヘッダー */}
           <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex" style={{ height: HEADER_HEIGHT }}>
-            <div className="flex-1 min-w-0 flex items-center px-3 text-xs font-medium text-black/50">
-              施策 / フェーズ
+            <div className="flex-1 min-w-0 flex flex-col justify-center px-3">
+              <span className="text-xs font-medium text-black/50">施策 / フェーズ</span>
+              <span className="mt-0.5 flex items-center gap-2 text-[10px] text-black/45">
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400" />未着手</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#4a9eff]" />進行中</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-black/20" />完了</span>
+              </span>
             </div>
             <div className="w-16 shrink-0 flex items-center px-2 text-xs font-medium text-black/50 border-l border-black/5">
               担当
