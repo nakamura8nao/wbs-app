@@ -124,6 +124,98 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
+// 備考テキストを表示用にレンダリング
+// - マークダウン形式リンク [表示名](https://...) → 表示名のリンク
+// - 素の URL (http/https) → URL そのままのリンク
+const notesTokenPattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g;
+const notesLinkClasses = "text-[#4a9eff] underline underline-offset-2 hover:text-[#3a8eef] break-all";
+function NotesContent({ text }: { text: string }) {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  for (const m of text.matchAll(notesTokenPattern)) {
+    const idx = m.index ?? 0;
+    if (idx > lastIndex) nodes.push(text.slice(lastIndex, idx));
+    const href = m[2] ?? m[3];
+    const label = m[1] ?? m[3];
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={notesLinkClasses}
+      >
+        {label}
+      </a>
+    );
+    lastIndex = idx + m[0].length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return <>{nodes}</>;
+}
+
+// 備考のインライン編集セル。クリックで textarea を表示し、blur / Cmd+Enter で保存・Esc で取消
+function InlineNotesCell({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setDraft(value);
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        rows={3}
+        placeholder="メモ / [表示名](https://...) でリンク"
+        className="w-full rounded-md border border-[#4a9eff]/50 px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-[#4a9eff]/20 resize-y"
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        setDraft(value);
+        setEditing(true);
+      }}
+      className="cursor-text rounded-md px-1 -mx-1 py-0.5 hover:bg-gray-50 min-h-[1.5em]"
+      title="クリックして編集（[表示名](URL) でリンク）"
+    >
+      {value ? <NotesContent text={value} /> : <span className="text-slate-300">クリックして入力</span>}
+    </div>
+  );
+}
+
 // 須川さんチェック（承認）の3状態。クリックで巡回切り替え
 //   pending（青・要対応）→ approved（グレー・完了と同色）→ skipped（濃いグレー）→ pending
 // 未承認は「須川さんチェック待ち」を目立たせるため青。承認後はグレー系に落とす。
@@ -518,7 +610,10 @@ const SortableRow = memo(function SortableRow({
         <ApprovalCell project={project} onUpdateField={onUpdateField} />
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
-        {project.notes ?? ""}
+        <InlineNotesCell
+          value={project.notes ?? ""}
+          onSave={(text) => onUpdateField(project.id, { notes: text || null })}
+        />
       </td>
       <td className="w-10 py-3 px-2">
         <button
@@ -699,7 +794,10 @@ const ProjectRow = memo(function ProjectRow({
         </InlineMenuCell>
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
-        {project.notes ?? ""}
+        <InlineNotesCell
+          value={project.notes ?? ""}
+          onSave={(text) => onUpdateField(project.id, { notes: text || null })}
+        />
       </td>
       <td className="w-10 py-3 px-2">
         <button
