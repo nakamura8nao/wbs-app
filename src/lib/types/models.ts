@@ -28,7 +28,8 @@ export type Project = {
   size: string | null;
   notes: string | null;
   proposed_date: string;
-  impl_approved: ApprovalState;
+  wf_approved: ApprovalState;
+  design_approved: ApprovalState;
   release_approved: ApprovalState;
   created_at: string;
   updated_at: string;

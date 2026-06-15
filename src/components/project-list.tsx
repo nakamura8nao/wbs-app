@@ -260,7 +260,7 @@ function ApprovalToggle({
   );
 }
 
-// 承認2ゲートをまとめたセル（実装開始OK / 公開OK）
+// 承認3ゲートをまとめたセル（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）
 function ApprovalCell({
   project,
   onUpdateField,
@@ -271,16 +271,22 @@ function ApprovalCell({
   return (
     <div className="flex items-center gap-1">
       <ApprovalToggle
-        state={project.impl_approved}
-        onChange={(next) => onUpdateField(project.id, { impl_approved: next })}
-        label="実"
-        gateTitle="実装開始OK（須川さん）"
+        state={project.wf_approved}
+        onChange={(next) => onUpdateField(project.id, { wf_approved: next })}
+        label="W"
+        gateTitle="WFレビュー（須川さん）"
+      />
+      <ApprovalToggle
+        state={project.design_approved}
+        onChange={(next) => onUpdateField(project.id, { design_approved: next })}
+        label="デ"
+        gateTitle="デザインレビュー（須川さん）"
       />
       <ApprovalToggle
         state={project.release_approved}
         onChange={(next) => onUpdateField(project.id, { release_approved: next })}
         label="公"
-        gateTitle="公開OK（須川さん）"
+        gateTitle="公開前レビュー（須川さん）"
       />
     </div>
   );
@@ -606,7 +612,7 @@ const SortableRow = memo(function SortableRow({
           <ProgressIcon value={project.progress} />
         </InlineMenuCell>
       </td>
-      <td className="w-14 py-3 pl-6 pr-2 whitespace-nowrap">
+      <td className="w-24 py-3 pl-6 pr-2 whitespace-nowrap">
         <ApprovalCell project={project} onUpdateField={onUpdateField} />
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
@@ -1207,7 +1213,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Eng</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>状態</th>
         <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
-        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんの承認が必要なゲート（実=実装開始前 / 公=公開前）。青=要承認（須川さん待ち）／クリックで巡回：青=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">要承認</th>
+        <th scope="col" className={cn("w-24 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんのレビューが必要なゲート（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）。青=要レビュー（須川さん待ち）／クリックで巡回：青=未対応 → グレー=完了 → 濃いグレー=不要">要承認</th>
         <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>備考</th>
         <th scope="col" className={cn("w-10 py-3 px-2", th)}></th>
       </tr>
