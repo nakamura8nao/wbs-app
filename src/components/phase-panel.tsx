@@ -345,6 +345,7 @@ export function PhasePanel({
                 projects={[project]}
                 members={members}
                 height={`${Math.min(48 + (phases.length + 1) * 32 + 24, 520)}px`}
+                scrollButtons
               />
             </Suspense>
           ) : (
