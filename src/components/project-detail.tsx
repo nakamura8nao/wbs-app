@@ -7,6 +7,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PhasePanel } from "@/components/phase-panel";
 import { ProjectDialog } from "@/components/project-dialog";
+import { NotesContent } from "@/components/notes-content";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { SIZE_OPTIONS } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
@@ -143,7 +144,7 @@ export function ProjectDetail({
           {project.notes && (
             <div className="col-span-full pt-1 border-t border-black/5">
               <span className="text-xs text-black/40 block mb-1">備考</span>
-              <span className="text-sm text-black/70 whitespace-pre-wrap leading-relaxed">{project.notes}</span>
+              <span className="text-sm text-black/70 whitespace-pre-wrap leading-relaxed break-words"><NotesContent text={project.notes} /></span>
             </div>
           )}
         </div>
