@@ -6,7 +6,7 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -1045,10 +1045,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
           <button
             type="button"
             onClick={toggleTargetDateSort}
-            className={cn("cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
+            className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
             title="公開目安日で並び替え（昇順→降順→優先度順）"
           >
-            公開目安{sortKey === "target_date" && (sortDir === "asc" ? " ▲" : " ▼")}
+            公開目安
+            {sortKey === "target_date"
+              ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+              : <ArrowUpDown size={12} className="opacity-40" />}
           </button>
         </th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Dir</th>
