@@ -4,17 +4,17 @@ import { cn } from "@/lib/utils";
 const config = {
   paused: {
     icon: Pause,
-    className: "text-black/30",
+    className: "text-emerald-500",
     title: "一時停止",
   },
   active: {
     icon: Play,
-    className: "text-blue-500",
+    className: "text-[#4a9eff]",
     title: "進行中",
   },
   done: {
     icon: CheckCircle2,
-    className: "text-emerald-500",
+    className: "text-black/30",
     title: "完了",
   },
 } as const;
