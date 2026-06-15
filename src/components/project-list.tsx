@@ -972,23 +972,26 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   };
 
   const theadClasses = "border-b border-slate-200 bg-gray-50";
+  // 優先度順テーブルのヘッダーをスクロール追従させる。
+  // 上にグローバルヘッダー(45px) + ビュー切替バー(約60px) があるので top を 105px に。
+  const stickyTh = "sticky top-[105px] z-[12] bg-gray-50";
 
   const priorityTableHead = (
     <thead>
       <tr className={theadClasses}>
-        <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-        <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
-        <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-        <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-        <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500" data-tooltip="須川さんチェック：実=実装開始OK / 公=公開OK">承認</th>
-        <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-        <th scope="col" className="w-10 py-3 px-2"></th>
+        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
+        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", stickyTh)}>#</th>
+        <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", stickyTh)}><span className="hidden min-[1500px]:inline">事業</span></th>
+        <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>タイトル</th>
+        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>公開目安</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Dir</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Des</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>状態</th>
+        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
+        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんチェック：実=実装開始OK / 公=公開OK">承認</th>
+        <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>備考</th>
+        <th scope="col" className={cn("w-10 py-3 px-2", stickyTh)}></th>
       </tr>
     </thead>
   );
@@ -1082,8 +1085,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       {/* 優先度順ビュー（D&D対応） */}
       {viewMode === "priority" && (
         <div className="space-y-6">
-          {/* 決定済みカード */}
-          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+          {/* 決定済みカード（ヘッダー sticky のため overflow-clip。hidden だと sticky が効かない） */}
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-clip">
             <table className="w-full text-sm">
               {priorityTableHead}
               {activeProjects.length === 0 ? (
@@ -1137,7 +1140,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
 
           {/* 未決定カード */}
           {undecidedProjects.length > 0 && (
-            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-hidden">
+            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-clip">
               <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
