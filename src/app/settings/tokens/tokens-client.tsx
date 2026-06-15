@@ -72,13 +72,28 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
   return (
     <div className="space-y-8 text-base font-normal text-white">
       <header>
-        <h1 className="text-2xl font-normal">APIトークン</h1>
-        <p className="mt-2 text-base text-white/60">
-          Claude / CLI 等から /api/wbs/* を呼び出すための個人アクセストークン。
+        <h1 className="text-2xl font-semibold">APIトークン</h1>
+        <p className="mt-2 text-base text-white/80">
+          Claude / CLI 等から <code className="rounded bg-white/10 px-1 font-mono text-white">/api/wbs/*</code> を呼び出すための個人アクセストークン。
           <br />
-          発行されたトークンは <span className="text-white/90">この画面でしか表示されません</span>。安全な場所に保管してください。
+          発行されたトークンは <span className="font-semibold text-white">この画面でしか表示されません</span>。安全な場所に保管してください。
         </p>
       </header>
+
+      {/* このAPIについて */}
+      <section className="rounded-md border border-[#4a9eff]/30 bg-[#4a9eff]/[0.07] p-5">
+        <h2 className="mb-3 text-lg font-semibold text-white">このAPIでできること</h2>
+        <p className="text-base leading-relaxed text-white/85">
+          WBS の全データ（施策・フェーズ・メンバー・依存関係）をまとめて取得できます。
+          集計はせず生データを返すので、Claude に渡せば「いま誰が何を持ってる？」「遅れてる施策は？」
+          といった質問にそのまま答えてもらえます。
+        </p>
+        <div className="mt-3 rounded bg-black/30 px-4 py-3 text-base text-white/85">
+          <div className="mb-1 text-sm font-semibold text-white/70">Claude での使い方（例）</div>
+          発行した「完成URL」を貼って、こう聞くだけ：<br />
+          <span className="text-white">「このURLのWBSデータを見て、今週遅れている施策を教えて → &lt;完成URL&gt;」</span>
+        </div>
+      </section>
 
       {issuedToken && (
         <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-5">
@@ -88,7 +103,7 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
 
           <div className="mt-4 space-y-4">
             <div>
-              <div className="mb-1.5 text-sm text-white/50">トークン本体</div>
+              <div className="mb-1.5 text-sm font-medium text-white/70">トークン本体</div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 break-all rounded bg-black/40 px-3 py-2 font-mono text-sm text-emerald-100">
                   {issuedToken}
@@ -104,7 +119,7 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
             </div>
 
             <div>
-              <div className="mb-1.5 text-sm text-white/50">
+              <div className="mb-1.5 text-sm font-medium text-white/70">
                 完成URL（dump 用、Claude WebFetch やブラウザにそのまま貼れる）
               </div>
               <div className="flex items-center gap-2">
@@ -125,7 +140,7 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
           <button
             type="button"
             onClick={() => setIssuedToken(null)}
-            className="mt-4 text-sm text-white/40 hover:text-white/70"
+            className="mt-4 text-sm text-white/60 hover:text-white/90"
           >
             閉じる（保存済みなら）
           </button>
@@ -133,13 +148,13 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
       )}
 
       <section className="rounded-md border border-white/10 bg-white/[0.03] p-5">
-        <h2 className="mb-4 text-lg font-normal">新規発行</h2>
+        <h2 className="mb-4 text-lg font-semibold">新規発行</h2>
         <form onSubmit={handleIssue} className="flex items-center gap-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="用途名 (例: claude-mac)"
-            className="h-10 flex-1 rounded-md border border-white/15 bg-white/10 px-3 text-base outline-none placeholder:text-white/25 focus:border-[#4a9eff]/50"
+            className="h-10 flex-1 rounded-md border border-white/20 bg-white/10 px-3 text-base outline-none placeholder:text-white/40 focus:border-[#4a9eff]/60"
             maxLength={50}
             disabled={pending}
           />
@@ -153,15 +168,15 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
       </section>
 
       <section>
-        <h2 className="mb-4 text-lg font-normal">有効なトークン ({active.length})</h2>
+        <h2 className="mb-4 text-lg font-semibold">有効なトークン ({active.length})</h2>
         {active.length === 0 ? (
-          <div className="rounded-md border border-dashed border-white/10 px-4 py-6 text-center text-base text-white/40">
+          <div className="rounded-md border border-dashed border-white/10 px-4 py-6 text-center text-base text-white/65">
             有効なトークンはありません
           </div>
         ) : (
           <table className="w-full border-collapse text-base">
             <thead>
-              <tr className="border-b border-white/10 text-left text-white/50">
+              <tr className="border-b border-white/10 text-left text-white/70">
                 <th className="py-3 pr-3 font-normal">名前</th>
                 <th className="py-3 pr-3 font-normal">作成</th>
                 <th className="py-3 pr-3 font-normal">最終利用</th>
@@ -172,8 +187,8 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
               {active.map((t) => (
                 <tr key={t.id} className="border-b border-white/5">
                   <td className="py-3 pr-3">{t.name}</td>
-                  <td className="py-3 pr-3 text-white/60">{fmt(t.created_at)}</td>
-                  <td className="py-3 pr-3 text-white/60">{fmt(t.last_used_at)}</td>
+                  <td className="py-3 pr-3 text-white/80">{fmt(t.created_at)}</td>
+                  <td className="py-3 pr-3 text-white/80">{fmt(t.last_used_at)}</td>
                   <td className="py-3 text-right">
                     <Button
                       size="sm"
@@ -192,28 +207,28 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
       </section>
 
       <section className="rounded-md border border-white/10 bg-white/[0.03] p-5">
-        <h2 className="mb-4 text-lg font-normal">使い方</h2>
+        <h2 className="mb-4 text-lg font-semibold">使い方</h2>
 
-        <div className="space-y-6 text-base text-white/70">
+        <div className="space-y-6 text-base text-white/85">
           <div>
             <div className="mb-2 text-base text-white/90">A. URLにトークンを乗せる方式（最簡単）</div>
-            <p className="mb-2 text-base text-white/60">
+            <p className="mb-2 text-base text-white/80">
               発行直後に表示される「完成URL」をそのまま使います。Claude の WebFetch やブラウザに貼るだけで動きます。
             </p>
-            <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/80">
+            <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/90">
 {`<このサイトのURL>/api/wbs/dump?token=wbs_xxxxxxxx`}
             </pre>
-            <p className="mt-2 text-base text-amber-300/80">
+            <p className="mt-2 text-base text-amber-300">
               ※ アクセスログに残るので、社外公開サービスやブラウザ履歴に残したくない用途では B を使ってください。
             </p>
           </div>
 
           <div>
             <div className="mb-2 text-base text-white/90">B. Authorization ヘッダ方式（CLI/プログラム向け）</div>
-            <p className="mb-2 text-base text-white/60">
+            <p className="mb-2 text-base text-white/80">
               トークンが URL に乗らない分、ログ漏れに強い。シェル/curl 等から叩く時はこちら。
             </p>
-            <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/80">
+            <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/90">
 {`mkdir -p ~/.config/wbs && chmod 700 ~/.config/wbs
 cat > ~/.config/wbs/config <<EOF
 WBS_API_BASE=<このサイトのURL>
@@ -224,7 +239,7 @@ chmod 600 ~/.config/wbs/config
 ( set -a; . ~/.config/wbs/config; set +a; \\
   curl -fsS -H "Authorization: Bearer $WBS_TOKEN" "$WBS_API_BASE/api/wbs/dump" )`}
             </pre>
-            <p className="mt-2 text-base text-white/50">
+            <p className="mt-2 text-base text-white/70">
               <code className="text-white/70">401</code> が返ったらトークン失効。再発行してください。
             </p>
           </div>
@@ -233,7 +248,7 @@ chmod 600 ~/.config/wbs/config
             <div className="mb-2 text-base text-white/90">利用可能なエンドポイント</div>
             <table className="w-full border-collapse text-base">
               <thead>
-                <tr className="border-b border-white/10 text-left text-white/50">
+                <tr className="border-b border-white/10 text-left text-white/70">
                   <th className="py-2 pr-3 font-normal">パス</th>
                   <th className="py-2 pr-3 font-normal">クエリ</th>
                   <th className="py-2 font-normal">用途</th>
@@ -242,11 +257,11 @@ chmod 600 ~/.config/wbs/config
               <tbody>
                 <tr className="border-b border-white/5">
                   <td className="py-2 pr-3 font-mono text-white/80">GET /api/wbs/dump</td>
-                  <td className="py-2 pr-3 text-white/60">
+                  <td className="py-2 pr-3 text-white/80">
                     <code>?include_completed=1</code><br />
                     <code>?since=YYYY-MM-DD</code>
                   </td>
-                  <td className="py-2 text-white/60">
+                  <td className="py-2 text-white/80">
                     members / projects / phases / phase_dependencies を一括取得（ローデータ）。
                     集計は呼び出し側で行う想定。
                   </td>
@@ -255,7 +270,7 @@ chmod 600 ~/.config/wbs/config
             </table>
           </div>
 
-          <div className="rounded border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-base text-amber-200/80">
+          <div className="rounded border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-base text-amber-200">
             ⚠️ トークンを Slack やチャットに貼らないでください（パスワード相当）。
             漏れた場合はこの画面で <span className="text-amber-100">失効</span> → 新しく発行し直してください。
           </div>
@@ -264,10 +279,10 @@ chmod 600 ~/.config/wbs/config
 
       {revoked.length > 0 && (
         <section>
-          <h2 className="mb-4 text-lg font-normal text-white/40">
+          <h2 className="mb-4 text-lg font-semibold text-white/55">
             失効済み ({revoked.length})
           </h2>
-          <table className="w-full border-collapse text-base text-white/40">
+          <table className="w-full border-collapse text-base text-white/55">
             <thead>
               <tr className="border-b border-white/5 text-left">
                 <th className="py-3 pr-3 font-normal">名前</th>
