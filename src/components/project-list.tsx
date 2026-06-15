@@ -129,7 +129,7 @@ const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設�
 // 未承認は「須川さんチェック待ち」を目立たせるため緑。承認後はグレー系に落とす。
 const approvalConfig: Record<ApprovalState, { cls: string; label: string }> = {
   pending: { cls: "bg-emerald-500 text-white", label: "未承認" },
-  approved: { cls: "bg-slate-400 text-white", label: "承認済み" },
+  approved: { cls: "bg-black/20 text-black/50", label: "承認済み" },
   skipped: { cls: "bg-slate-600 text-white", label: "承認不要（事後報告）" },
 };
 
