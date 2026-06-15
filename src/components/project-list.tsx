@@ -124,6 +124,33 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
+// 備考テキスト中の URL をクリック可能なリンクに変換して表示
+const urlSplitPattern = /(https?:\/\/[^\s]+)/g;
+const isUrl = (s: string) => /^https?:\/\/[^\s]+$/.test(s);
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(urlSplitPattern);
+  return (
+    <>
+      {parts.map((part, i) =>
+        isUrl(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[#4a9eff] underline underline-offset-2 hover:text-[#3a8eef] break-all"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 // 須川さんチェック（承認）の3状態。クリックで巡回切り替え
 //   pending（青・要対応）→ approved（グレー・完了と同色）→ skipped（濃いグレー）→ pending
 // 未承認は「須川さんチェック待ち」を目立たせるため青。承認後はグレー系に落とす。
@@ -491,7 +518,7 @@ const SortableRow = memo(function SortableRow({
         <ApprovalCell project={project} onUpdateField={onUpdateField} />
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
-        {project.notes ?? ""}
+        <Linkify text={project.notes ?? ""} />
       </td>
       <td className="w-10 py-3 px-2">
         <button
@@ -672,7 +699,7 @@ const ProjectRow = memo(function ProjectRow({
         </InlineMenuCell>
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
-        {project.notes ?? ""}
+        <Linkify text={project.notes ?? ""} />
       </td>
       <td className="w-10 py-3 px-2">
         <button
