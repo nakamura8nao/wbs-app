@@ -1,5 +1,7 @@
 // アプリで使うドメインモデルの型定義
 
+import type { ApprovalState } from "@/lib/constants";
+
 export type Member = {
   id: string;
   user_id: string | null;
@@ -26,8 +28,8 @@ export type Project = {
   size: string | null;
   notes: string | null;
   proposed_date: string;
-  impl_approved: boolean;
-  release_approved: boolean;
+  impl_approved: ApprovalState;
+  release_approved: ApprovalState;
   created_at: string;
   updated_at: string;
   // JOINで取得する担当者情報

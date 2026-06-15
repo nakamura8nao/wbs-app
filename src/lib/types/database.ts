@@ -70,8 +70,8 @@ export type Database = {
           size: string | null;
           notes: string | null;
           proposed_date: string;
-          impl_approved: boolean;
-          release_approved: boolean;
+          impl_approved: string;
+          release_approved: string;
           created_at: string;
           updated_at: string;
         };
@@ -94,8 +94,8 @@ export type Database = {
           size?: string | null;
           notes?: string | null;
           proposed_date?: string;
-          impl_approved?: boolean;
-          release_approved?: boolean;
+          impl_approved?: string;
+          release_approved?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -116,8 +116,8 @@ export type Database = {
           size?: string | null;
           notes?: string | null;
           proposed_date?: string;
-          impl_approved?: boolean;
-          release_approved?: boolean;
+          impl_approved?: string;
+          release_approved?: string;
           updated_at?: string;
         };
         Relationships: [];
