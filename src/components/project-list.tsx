@@ -95,7 +95,7 @@ function ProjectActionMenu({
   return (
     <Menu.Root open={open} onOpenChange={(open) => onOpenChange(open)} modal={false}>
       <Menu.Portal>
-        <Menu.Positioner anchor={anchor} side="bottom" align="start" sideOffset={4}>
+        <Menu.Positioner anchor={anchor} side="bottom" align="start" sideOffset={4} className="z-[60]">
           <Menu.Popup className={menuPopupClasses}>
             <Menu.Item className={menuItemClasses} onClick={onEdit}>
               <Pencil size={14} />
@@ -345,7 +345,7 @@ function InlineMenuCell<T extends string>({
         {children ?? (value ?? placeholder)}
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="start" sideOffset={4}>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
           <Menu.Popup className={menuPopupClasses}>
             {options.map((opt) => (
               <Menu.Item
@@ -399,7 +399,7 @@ function InlineDateCell({
         ) : "-"}
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="start" sideOffset={4}>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
           <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")}>
             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
               <input
