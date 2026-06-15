@@ -1002,7 +1002,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>状態</th>
         <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
-        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんチェック（実=実装開始OK / 公=公開OK）｜クリックで巡回：青=未承認（要対応） → グレー=承認済み → 濃いグレー=承認不要（事後報告）">承認</th>
+        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんの承認が必要なゲート（実=実装開始前 / 公=公開前）。青=要承認（須川さん待ち）／クリックで巡回：青=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">要承認</th>
         <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>備考</th>
         <th scope="col" className={cn("w-10 py-3 px-2", stickyTh)}></th>
       </tr>
