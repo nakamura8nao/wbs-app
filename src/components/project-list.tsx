@@ -39,7 +39,7 @@ type Props = {
   members: Member[];
 };
 
-type ViewMode = "priority" | "group" | "gantt" | "released";
+type ViewMode = "priority" | "group" | "engineer" | "gantt" | "released";
 
 const sizeLabel = (value: string | null) => {
   if (!value) return "-";
@@ -928,6 +928,23 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     [projects, filterProject]
   );
 
+  // エンジニア別グルーピング（施策の engineer で分類、未割当は末尾）
+  // 各グループ内は activeProjects の順（=優先度順）を維持
+  const engineerGroups = useMemo(() => {
+    const map = new Map<string, { name: string; items: Project[] }>();
+    for (const p of activeProjects) {
+      const key = p.engineer_id ?? "__none__";
+      const name = p.engineer?.display_name ?? "未割当";
+      if (!map.has(key)) map.set(key, { name, items: [] });
+      map.get(key)!.items.push(p);
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.name === "未割当") return 1;
+      if (b.name === "未割当") return -1;
+      return a.name.localeCompare(b.name, "ja");
+    });
+  }, [activeProjects]);
+
   const supabase = useMemo(() => createClient(), []);
 
   const sensors = useSensors(
@@ -1222,6 +1239,17 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               事業別
             </button>
             <button
+              onClick={() => setViewMode("engineer")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "engineer"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+            >
+              Eng別
+            </button>
+            <button
               onClick={() => setViewMode("gantt")}
               className={cn(
                 "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
@@ -1454,6 +1482,49 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Eng別ビュー（列構成は優先度順と同じ。エンジニアでグルーピング、ドラッグ並び替えは無効） */}
+      {viewMode === "engineer" && (
+        <div className="space-y-6">
+          {engineerGroups.length === 0 ? (
+            <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 px-4 py-16 text-center text-base text-slate-500">
+              施策がありません。
+            </div>
+          ) : (
+            engineerGroups.map((group) => (
+              <div
+                key={group.name}
+                className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
+              >
+                <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
+                  <h3 className="text-base font-bold text-slate-900">{group.name}</h3>
+                  <span className="text-xs text-slate-500">{group.items.length}件</span>
+                </div>
+                <table className="w-full text-sm">
+                  {priorityTableHead}
+                  <tbody className="divide-y divide-slate-100">
+                    {group.items.map((project) => (
+                      <SortableRow
+                        key={project.id}
+                        project={project}
+                        isExpanded={expandedProjectId === project.id}
+                        onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                        onEdit={() => setEditingProject(project)}
+                        onDuplicate={() => handleDuplicate(project)}
+                        onDelete={() => handleDelete(project.id)}
+                        onUpdateField={handleUpdateField}
+                        onPhasesChange={reloadPhaseAssignees}
+                        members={members}
+                        dragDisabled
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
         </div>
       )}
 
