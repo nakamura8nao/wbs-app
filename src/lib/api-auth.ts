@@ -1,5 +1,7 @@
-// Bearer トークン認証 (個人アクセストークン)
-// /api/wbs/* 用。Cookie ではなく Authorization ヘッダの Bearer を見る。
+// API トークン認証 (個人アクセストークン)
+// /api/wbs/* 用。以下のいずれかでトークンを受け付ける:
+//   1. Authorization: Bearer <token> ヘッダ (推奨)
+//   2. ?token=<token> クエリパラメータ (Redash 互換、WebFetch / ブラウザ用)
 
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
@@ -27,15 +29,22 @@ export function createAdminClient() {
   );
 }
 
-export async function authenticateBearer(request: Request): Promise<ApiAuthResult> {
+function extractToken(request: Request): string | null {
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return { ok: false, status: 401, error: "missing bearer token" };
+  if (match) {
+    const raw = match[1].trim();
+    if (raw) return raw;
   }
-  const raw = match[1].trim();
+  const query = new URL(request.url).searchParams.get("token");
+  if (query && query.trim()) return query.trim();
+  return null;
+}
+
+export async function authenticateBearer(request: Request): Promise<ApiAuthResult> {
+  const raw = extractToken(request);
   if (!raw) {
-    return { ok: false, status: 401, error: "empty bearer token" };
+    return { ok: false, status: 401, error: "missing token" };
   }
 
   const hash = await sha256Hex(raw);
