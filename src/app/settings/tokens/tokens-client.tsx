@@ -211,33 +211,12 @@ export function TokensClient({ initialTokens }: { initialTokens: TokenRow[] }) {
 
         <div className="space-y-6 text-base text-white/85">
           <div>
-            <div className="mb-2 text-base text-white/90">A. URLにトークンを乗せる方式（最簡単）</div>
+            <div className="mb-2 text-base text-white/90">完成URLをそのまま使う</div>
             <p className="mb-2 text-base text-white/80">
               発行直後に表示される「完成URL」をそのまま使います。Claude の WebFetch やブラウザに貼るだけで動きます。
             </p>
             <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/90">
 {`<このサイトのURL>/api/wbs/dump?token=wbs_xxxxxxxx`}
-            </pre>
-            <p className="mt-2 text-base text-amber-300">
-              ※ アクセスログに残るので、社外公開サービスやブラウザ履歴に残したくない用途では B を使ってください。
-            </p>
-          </div>
-
-          <div>
-            <div className="mb-2 text-base text-white/90">B. Authorization ヘッダ方式（CLI/プログラム向け）</div>
-            <p className="mb-2 text-base text-white/80">
-              トークンが URL に乗らない分、ログ漏れに強い。シェル/curl 等から叩く時はこちら。
-            </p>
-            <pre className="overflow-x-auto rounded bg-black/40 p-4 font-mono text-sm leading-relaxed text-white/90">
-{`mkdir -p ~/.config/wbs && chmod 700 ~/.config/wbs
-cat > ~/.config/wbs/config <<EOF
-WBS_API_BASE=<このサイトのURL>
-WBS_TOKEN=wbs_<上で発行した生トークン>
-EOF
-chmod 600 ~/.config/wbs/config
-
-( set -a; . ~/.config/wbs/config; set +a; \\
-  curl -fsS -H "Authorization: Bearer $WBS_TOKEN" "$WBS_API_BASE/api/wbs/dump" )`}
             </pre>
             <p className="mt-2 text-base text-white/70">
               <code className="text-white/70">401</code> が返ったらトークン失効。再発行してください。
