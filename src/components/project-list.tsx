@@ -938,9 +938,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       if (!map.has(key)) map.set(key, { name, items: [] });
       map.get(key)!.items.push(p);
     }
+    // タスク数の多い順。未割当は末尾。同数は名前順
     return [...map.values()].sort((a, b) => {
       if (a.name === "未割当") return 1;
       if (b.name === "未割当") return -1;
+      if (b.items.length !== a.items.length) return b.items.length - a.items.length;
       return a.name.localeCompare(b.name, "ja");
     });
   }, [activeProjects]);
