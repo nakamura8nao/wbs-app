@@ -154,10 +154,12 @@ export function ProjectDetail({
       <div className="rounded-lg border border-black/8 bg-white overflow-hidden">
         <PhasePanel
           projectId={project.id}
+          project={project}
           members={members}
           directorId={project.director_id}
           designerId={project.designer_id}
           engineerId={project.engineer_id}
+          defaultView="list"
         />
       </div>
 

@@ -487,9 +487,11 @@ function GanttBar({
 export function GanttChart({
   projects: initialProjects,
   members,
+  height = "calc(100vh - 140px)",
 }: {
   projects: Project[];
   members: Member[];
+  height?: string;
 }) {
   const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(initialProjects.map((p) => p.id)));
@@ -763,7 +765,7 @@ export function GanttChart({
   const LABEL_WIDTH = 360;
 
   return (
-    <div className="overflow-hidden rounded-md border border-black/5 bg-white" style={{ height: "calc(100vh - 140px)" }}>
+    <div className="overflow-hidden rounded-md border border-black/5 bg-white" style={{ height }}>
       <div className="flex h-full">
         {/* 左ラベル列 */}
         <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
