@@ -873,8 +873,8 @@ export function GanttChart({
           ))}
         </div>
 
-        {/* 右タイムライン */}
-        <div className="flex-1 overflow-auto" ref={scrollRef}>
+        {/* 右タイムライン（min-w-0 でセル内でも幅が縮み、横スクロールが効くようにする） */}
+        <div className="flex-1 min-w-0 overflow-auto" ref={scrollRef}>
           <div style={{ width: totalDays * DAY_WIDTH, minHeight: "100%" }}>
             <DateHeader start={range.start} totalDays={totalDays} />
 
