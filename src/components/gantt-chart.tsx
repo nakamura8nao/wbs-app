@@ -331,9 +331,9 @@ function GanttBar({
 
   const statusColor = () => {
     switch (phase.status) {
-      case "完了": return "bg-emerald-400";
+      case "完了": return "bg-black/20";
       case "進行中": return "bg-[#4a9eff]";
-      default: return "bg-black/20";
+      default: return "bg-emerald-400";
     }
   };
 

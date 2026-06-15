@@ -73,6 +73,9 @@ export const SIZE_OPTIONS = [
   { value: "480", label: "480pt (3か月)" },
 ] as const;
 
+// 須川さんチェック（承認）の3状態
+export const APPROVAL_STATES = ["pending", "approved", "skipped"] as const;
+
 export const PHASE_STATUS_OPTIONS = [
   "未着手",
   "進行中",
@@ -92,3 +95,4 @@ export type Progress = (typeof PROGRESS_OPTIONS)[number]["value"];
 export type PhaseStatus = (typeof PHASE_STATUS_OPTIONS)[number];
 export type MemberRole = (typeof MEMBER_ROLE_OPTIONS)[number];
 export type Size = (typeof SIZE_OPTIONS)[number]["value"];
+export type ApprovalState = (typeof APPROVAL_STATES)[number];

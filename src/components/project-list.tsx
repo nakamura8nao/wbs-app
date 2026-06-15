@@ -6,11 +6,12 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS } from "@/lib/constants";
+import type { ApprovalState } from "@/lib/constants";
 import type { Project, Member, ProjectFormData } from "@/lib/types/models";
 import {
   DndContext,
@@ -123,6 +124,168 @@ function ProjectActionMenu({
 
 const EmptyPlaceholder = () => <span className="text-xs text-slate-400">未設定</span>;
 
+// 備考テキストを表示用にレンダリング
+// - マークダウン形式リンク [表示名](https://...) → 表示名のリンク
+// - 素の URL (http/https) → URL そのままのリンク
+const notesTokenPattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g;
+const notesLinkClasses = "text-[#4a9eff] underline underline-offset-2 hover:text-[#3a8eef] break-all";
+function NotesContent({ text }: { text: string }) {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  for (const m of text.matchAll(notesTokenPattern)) {
+    const idx = m.index ?? 0;
+    if (idx > lastIndex) nodes.push(text.slice(lastIndex, idx));
+    const href = m[2] ?? m[3];
+    const label = m[1] ?? m[3];
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={notesLinkClasses}
+      >
+        {label}
+      </a>
+    );
+    lastIndex = idx + m[0].length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return <>{nodes}</>;
+}
+
+// 備考のインライン編集セル。クリックで textarea を表示し、blur / Cmd+Enter で保存・Esc で取消
+function InlineNotesCell({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setDraft(value);
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        rows={3}
+        placeholder="メモ / [表示名](https://...) でリンク"
+        className="w-full rounded-md border border-[#4a9eff]/50 px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-[#4a9eff]/20 resize-y"
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        setDraft(value);
+        setEditing(true);
+      }}
+      className="cursor-text rounded-md px-1 -mx-1 py-0.5 hover:bg-gray-50 min-h-[1.5em]"
+      title="クリックして編集（[表示名](URL) でリンク）"
+    >
+      {value ? <NotesContent text={value} /> : <span className="text-slate-300">クリックして入力</span>}
+    </div>
+  );
+}
+
+// 須川さんチェック（承認）の3状態。クリックで巡回切り替え
+//   pending（青・要対応）→ approved（グレー・完了と同色）→ skipped（濃いグレー）→ pending
+// 未承認は「須川さんチェック待ち」を目立たせるため青。承認後はグレー系に落とす。
+const approvalConfig: Record<ApprovalState, { cls: string; label: string }> = {
+  pending: { cls: "bg-[#4a9eff] text-white", label: "未承認" },
+  approved: { cls: "bg-black/20 text-white", label: "承認済み" },
+  skipped: { cls: "bg-slate-600 text-white", label: "承認不要（事後報告）" },
+};
+
+const nextApprovalState = (s: ApprovalState): ApprovalState =>
+  s === "pending" ? "approved" : s === "approved" ? "skipped" : "pending";
+
+// 色の凡例（ツールチップに添える）
+const approvalLegend = "青=未承認（要対応） / グレー=承認済み / 濃いグレー=承認不要（事後報告）";
+
+function ApprovalToggle({
+  state,
+  onChange,
+  label,
+  gateTitle,
+}: {
+  state: ApprovalState;
+  onChange: (next: ApprovalState) => void;
+  label: string;
+  gateTitle: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={`${gateTitle}｜${approvalLegend}（現在: ${approvalConfig[state].label}）`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(nextApprovalState(state));
+      }}
+      className={cn(
+        "inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold transition-colors cursor-pointer",
+        approvalConfig[state].cls
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+// 承認2ゲートをまとめたセル（実装開始OK / 公開OK）
+function ApprovalCell({
+  project,
+  onUpdateField,
+}: {
+  project: Project;
+  onUpdateField: (id: string, patch: Partial<Project>) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <ApprovalToggle
+        state={project.impl_approved}
+        onChange={(next) => onUpdateField(project.id, { impl_approved: next })}
+        label="実"
+        gateTitle="実装開始OK（須川さん）"
+      />
+      <ApprovalToggle
+        state={project.release_approved}
+        onChange={(next) => onUpdateField(project.id, { release_approved: next })}
+        label="公"
+        gateTitle="公開OK（須川さん）"
+      />
+    </div>
+  );
+}
+
 // YYYY-MM-DD 同士の日数差（end - start）
 const diffDays = (start: string, end: string): number => {
   const [sy, sm, sd] = start.split("-").map(Number);
@@ -201,6 +364,8 @@ function InlineMenuCell<T extends string>({
 }
 
 // インライン日付編集セル
+// 日付選択のたびに確定すると、公開目安ソート中は即再ソートで行が動いて操作しづらい。
+// そのため編集中はローカルのドラフトに溜め、「適用」または閉じたときに一度だけ確定する。
 function InlineDateCell({
   value,
   tentative,
@@ -210,8 +375,24 @@ function InlineDateCell({
   tentative: boolean;
   onChange: (value: string | null, tentative: boolean) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState<string | null>(value);
+  const [draftTentative, setDraftTentative] = useState(tentative);
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      // 開くとき：現在の確定値でドラフトを初期化
+      setDraftValue(value);
+      setDraftTentative(tentative);
+    } else if (draftValue !== value || draftTentative !== tentative) {
+      // 閉じるとき：差分があればここで初めて確定（このタイミングで行が動く）
+      onChange(draftValue, draftTentative);
+    }
+    setOpen(next);
+  };
+
   return (
-    <Menu.Root modal={false}>
+    <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
       <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
         {value ? (
           tentative ? <span className="text-xs text-slate-400">{value} 仮</span> : value
@@ -223,28 +404,37 @@ function InlineDateCell({
             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
               <input
                 type="date"
-                value={value ?? ""}
-                onChange={(e) => onChange(e.target.value || null, tentative)}
+                value={draftValue ?? ""}
+                onChange={(e) => setDraftValue(e.target.value || null)}
                 className="h-8 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-[#4a9eff]"
               />
               <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={tentative}
-                  onChange={(e) => onChange(value, e.target.checked)}
+                  checked={draftTentative}
+                  onChange={(e) => setDraftTentative(e.target.checked)}
                   className="h-4 w-4 cursor-pointer"
                 />
                 仮
               </label>
-              {value && (
+              <div className="flex items-center justify-between">
+                {draftValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setDraftValue(null)}
+                    className="text-left text-xs text-slate-500 hover:text-red-500"
+                  >
+                    クリア
+                  </button>
+                ) : <span />}
                 <button
                   type="button"
-                  onClick={() => onChange(null, tentative)}
-                  className="text-left text-xs text-slate-500 hover:text-red-500"
+                  onClick={() => handleOpenChange(false)}
+                  className="rounded-md bg-primary-500 px-3 py-1 text-xs font-medium text-white hover:bg-primary-400 cursor-pointer"
                 >
-                  クリア
+                  適用
                 </button>
-              )}
+              </div>
             </div>
           </Menu.Popup>
         </Menu.Positioner>
@@ -265,6 +455,7 @@ const SortableRow = memo(function SortableRow({
   onUpdateField,
   onPhasesChange,
   members,
+  dragDisabled = false,
 }: {
   project: Project;
   isExpanded: boolean;
@@ -276,6 +467,7 @@ const SortableRow = memo(function SortableRow({
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   members: Member[];
+  dragDisabled?: boolean;
 }) {
   const {
     attributes,
@@ -284,7 +476,7 @@ const SortableRow = memo(function SortableRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: project.id });
+  } = useSortable({ id: project.id, disabled: dragDisabled });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -321,14 +513,18 @@ const SortableRow = memo(function SortableRow({
       onContextMenu={handleContextMenu}
     >
       <td className="w-8 py-3 px-2 text-center">
-        <span
-          {...attributes}
-          {...listeners}
-          className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
-          title="ドラッグして並び替え"
-        >
-          ⠿
-        </span>
+        {dragDisabled ? (
+          <span className="text-slate-200" title="優先度順のときだけ並び替えできます">⠿</span>
+        ) : (
+          <span
+            {...attributes}
+            {...listeners}
+            className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+            title="ドラッグして並び替え"
+          >
+            ⠿
+          </span>
+        )}
       </td>
       <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
         {project.priority_undecided ? "-" : project.priority}
@@ -410,8 +606,14 @@ const SortableRow = memo(function SortableRow({
           <ProgressIcon value={project.progress} />
         </InlineMenuCell>
       </td>
-      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
-        {project.notes ?? ""}
+      <td className="w-14 py-3 pl-6 pr-2 whitespace-nowrap">
+        <ApprovalCell project={project} onUpdateField={onUpdateField} />
+      </td>
+      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
+        <InlineNotesCell
+          value={project.notes ?? ""}
+          onSave={(text) => onUpdateField(project.id, { notes: text || null })}
+        />
       </td>
       <td className="w-10 py-3 px-2">
         <button
@@ -435,7 +637,7 @@ const SortableRow = memo(function SortableRow({
     />
     {isExpanded && (
       <tr>
-        <td colSpan={12} className="p-0">
+        <td colSpan={13} className="p-0">
           <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
@@ -592,7 +794,10 @@ const ProjectRow = memo(function ProjectRow({
         </InlineMenuCell>
       </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
-        {project.notes ?? ""}
+        <InlineNotesCell
+          value={project.notes ?? ""}
+          onSave={(text) => onUpdateField(project.id, { notes: text || null })}
+        />
       </td>
       <td className="w-10 py-3 px-2">
         <button
@@ -646,6 +851,24 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
+  // 優先度順ビューの並び替え。priority=本来の優先度順（D&D可）、target_date=公開目安日順
+  const [sortKey, setSortKey] = useState<"priority" | "target_date">("priority");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const isPrioritySort = sortKey === "priority";
+
+  // 公開目安ヘッダーをクリックしたとき：target_date 昇順 → 降順 → 優先度順に戻る
+  const toggleTargetDateSort = useCallback(() => {
+    if (sortKey !== "target_date") {
+      setSortKey("target_date");
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey("priority");
+    }
+  }, [sortKey, sortDir]);
+
+  const resetToPrioritySort = useCallback(() => setSortKey("priority"), []);
 
   // メンバー + 着手状況フィルタ
   // メンバー絞り込みは施策の director/designer/engineer に加え、フェーズ担当者も対象にする
@@ -665,6 +888,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
   const decidedProjects = useMemo(() => activeProjects.filter((p) => !p.priority_undecided), [activeProjects]);
   const undecidedProjects = useMemo(() => activeProjects.filter((p) => p.priority_undecided), [activeProjects]);
+
+  // 表示用の決定済みリスト。target_date 並び替え時は公開目安日でソート（未設定は末尾）
+  const displayedDecidedProjects = useMemo(() => {
+    if (isPrioritySort) return decidedProjects;
+    const sorted = [...decidedProjects].sort((a, b) => {
+      if (!a.target_date && !b.target_date) return 0;
+      if (!a.target_date) return 1;
+      if (!b.target_date) return -1;
+      return a.target_date.localeCompare(b.target_date);
+    });
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  }, [decidedProjects, isPrioritySort, sortDir]);
 
   // 未決定施策をグループ（lv2）順に並べる
   const undecidedGrouped = useMemo(() => {
@@ -911,22 +1146,47 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   };
 
   const theadClasses = "border-b border-slate-200 bg-gray-50";
+  // 優先度順テーブルのヘッダーをスクロール追従させる。
+  // 上にグローバルヘッダー(45px) + ビュー切替バー(約60px) があるので top を 105px に。
+  const stickyTh = "sticky top-[105px] z-[12] bg-gray-50";
 
   const priorityTableHead = (
     <thead>
       <tr className={theadClasses}>
-        <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-        <th scope="col" className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500"><span className="hidden min-[1500px]:inline">事業</span></th>
-        <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-        <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
-        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-        <th scope="col" className="w-8 py-3 px-2"></th>
-        <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-        <th scope="col" className="w-10 py-3 px-2"></th>
+        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
+        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", stickyTh)}>
+          <button
+            type="button"
+            onClick={resetToPrioritySort}
+            className={cn("cursor-pointer hover:text-slate-700", isPrioritySort && "text-slate-900 font-semibold")}
+            title="優先度順に並べる（リセット）"
+          >
+            #{isPrioritySort && " ▼"}
+          </button>
+        </th>
+        <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", stickyTh)}><span className="hidden min-[1500px]:inline">事業</span></th>
+        <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>タイトル</th>
+        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>
+          <button
+            type="button"
+            onClick={toggleTargetDateSort}
+            className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
+            title="公開目安日で並び替え（昇順→降順→優先度順）"
+          >
+            公開目安
+            {sortKey === "target_date"
+              ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+              : <ArrowUpDown size={12} className="opacity-40" />}
+          </button>
+        </th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Dir</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Des</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>Eng</th>
+        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>状態</th>
+        <th scope="col" className={cn("w-8 py-3 px-2", stickyTh)}></th>
+        <th scope="col" className={cn("w-14 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", stickyTh)} data-tooltip="須川さんの承認が必要なゲート（実=実装開始前 / 公=公開前）。青=要承認（須川さん待ち）／クリックで巡回：青=未承認 → グレー=承認済み → 濃いグレー=承認不要（事後報告）">要承認</th>
+        <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", stickyTh)}>備考</th>
+        <th scope="col" className={cn("w-10 py-3 px-2", stickyTh)}></th>
       </tr>
     </thead>
   );
@@ -1020,14 +1280,14 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       {/* 優先度順ビュー（D&D対応） */}
       {viewMode === "priority" && (
         <div className="space-y-6">
-          {/* 決定済みカード */}
-          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+          {/* 決定済みカード（ヘッダー sticky のため overflow-clip。hidden だと sticky が効かない） */}
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-clip">
             <table className="w-full text-sm">
               {priorityTableHead}
               {activeProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={12} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={13} className="py-16 text-center text-base text-slate-500">
                       施策がまだありません。「新規作成」から追加してください。
                     </td>
                   </tr>
@@ -1035,7 +1295,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               ) : decidedProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={12} className="py-10 text-center text-sm text-slate-500">
+                    <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
                       優先順位が決定済みの施策はありません。
                     </td>
                   </tr>
@@ -1047,11 +1307,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   onDragEnd={(event) => handleSectionDragEnd(event, false)}
                 >
                   <SortableContext
-                    items={decidedProjects.map((p) => p.id)}
+                    items={displayedDecidedProjects.map((p) => p.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <tbody className="divide-y divide-slate-100">
-                      {decidedProjects.map((project) => (
+                      {displayedDecidedProjects.map((project) => (
                         <SortableRow
                           key={project.id}
                           project={project}
@@ -1064,6 +1324,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
+                          dragDisabled={!isPrioritySort}
                         />
                       ))}
                     </tbody>
@@ -1075,7 +1336,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
 
           {/* 未決定カード */}
           {undecidedProjects.length > 0 && (
-            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-hidden">
+            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-clip">
               <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
@@ -1088,7 +1349,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   {undecidedGrouped.map((group) => (
                     <tbody key={group.lv2} className="divide-y divide-slate-100">
                       <tr>
-                        <td colSpan={12} className="p-0">
+                        <td colSpan={13} className="p-0">
                           <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
                             <GroupLv2Icon value={group.lv2} size={16} />
                             <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
@@ -1108,6 +1369,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
+                          dragDisabled={!isPrioritySort}
                         />
                       ))}
                     </tbody>
