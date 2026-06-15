@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const config = {
   paused: {
     icon: Pause,
-    className: "text-emerald-500",
+    className: "text-slate-400",
     title: "一時停止",
   },
   active: {
