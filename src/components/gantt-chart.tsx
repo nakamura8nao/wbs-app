@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -504,6 +504,7 @@ export function GanttChart({
   const [editForm, setEditForm] = useState<PhaseFormData | null>(null);
   const [addingForProjectId, setAddingForProjectId] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<PhaseFormData | null>(null);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const labelScrollRef = useRef<HTMLDivElement>(null);
@@ -756,12 +757,16 @@ export function GanttChart({
   const totalDays = diffDays(range.start, range.end) + 1;
   const todayOffset = diffDays(range.start, new Date());
 
+  // 表示するフェーズ（完了を非表示にするトグル対応）。データ操作は ganttProjects のまま。
+  const visiblePhases = (proj: GanttProject) =>
+    hideCompleted ? proj.phases.filter((p) => p.status !== "完了") : proj.phases;
+
   // 行データを構築
   const rows: { type: "project" | "phase"; project: GanttProject; phase?: GanttPhase }[] = [];
   for (const proj of ganttProjects) {
     rows.push({ type: "project", project: proj });
     if (expandedIds.has(proj.id)) {
-      for (const phase of proj.phases) {
+      for (const phase of visiblePhases(proj)) {
         rows.push({ type: "phase", project: proj, phase });
       }
     }
@@ -802,7 +807,23 @@ export function GanttChart({
           {/* ヘッダー */}
           <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex" style={{ height: HEADER_HEIGHT }}>
             <div className="flex-1 min-w-0 flex flex-col justify-center px-3">
-              <span className="text-xs font-medium text-black/50">施策 / フェーズ</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-black/50">施策 / フェーズ</span>
+                <button
+                  type="button"
+                  onClick={() => setHideCompleted((v) => !v)}
+                  className={cn(
+                    "shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors",
+                    hideCompleted
+                      ? "bg-red-500/10 text-red-500"
+                      : "text-black/40 hover:bg-black/5 hover:text-black/60"
+                  )}
+                  title={hideCompleted ? "完了フェーズを表示" : "完了フェーズを非表示"}
+                >
+                  {hideCompleted ? <EyeOff size={14} /> : <Eye size={14} />}
+                  完了を非表示
+                </button>
+              </div>
               <span className="mt-0.5 flex items-center gap-2 text-[10px] text-black/45">
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-white border border-slate-300" />未着手</span>
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#4a9eff]" />進行中</span>
@@ -859,8 +880,8 @@ export function GanttChart({
               {/* フェーズ行（ドラッグ並び替え可能） */}
               {expandedIds.has(proj.id) && (
                 <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={(e) => handlePhaseDragEnd(proj.id, e)}>
-                  <SortableContext items={proj.phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                    {proj.phases.map((phase) => {
+                  <SortableContext items={visiblePhases(proj).map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                    {visiblePhases(proj).map((phase) => {
                       const isEditing = editingPhaseId === phase.id;
                       return (
                         <div key={phase.id}>
