@@ -333,9 +333,12 @@ function GanttBar({
     switch (phase.status) {
       case "完了": return "bg-black/20";
       case "進行中": return "bg-[#4a9eff]";
-      default: return "bg-emerald-400";
+      default: return "bg-white border border-slate-300"; // 未着手：白地＋グレー枠
     }
   };
+  // 未着手は白地なので文字をグレーに（他は白）
+  const isTodo = phase.status !== "完了" && phase.status !== "進行中";
+  const barTextColor = isTodo ? "text-slate-500" : "text-white";
 
   const handleMouseDown = (e: React.MouseEvent, type: "move" | "resize-start" | "resize-end") => {
     e.preventDefault();
@@ -471,7 +474,7 @@ function GanttBar({
           handleMouseDown(e, "move");
         }}
       >
-        <span className="text-xs text-white font-medium truncate">
+        <span className={cn("text-xs font-medium truncate", barTextColor)}>
           {phase.name}
         </span>
       </div>
@@ -801,7 +804,7 @@ export function GanttChart({
             <div className="flex-1 min-w-0 flex flex-col justify-center px-3">
               <span className="text-xs font-medium text-black/50">施策 / フェーズ</span>
               <span className="mt-0.5 flex items-center gap-2 text-[10px] text-black/45">
-                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400" />未着手</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-white border border-slate-300" />未着手</span>
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#4a9eff]" />進行中</span>
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-black/20" />完了</span>
               </span>
