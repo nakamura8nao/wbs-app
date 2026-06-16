@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronRight, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -487,9 +487,13 @@ function GanttBar({
 export function GanttChart({
   projects: initialProjects,
   members,
+  height = "calc(100vh - 140px)",
+  scrollButtons = false,
 }: {
   projects: Project[];
   members: Member[];
+  height?: string;
+  scrollButtons?: boolean;
 }) {
   const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(initialProjects.map((p) => p.id)));
@@ -762,8 +766,33 @@ export function GanttChart({
 
   const LABEL_WIDTH = 360;
 
+  // 横スライドボタン用。タイムラインを一定量スクロールする
+  const slideTimeline = (dir: -1 | 1) => {
+    scrollRef.current?.scrollBy({ left: dir * DAY_WIDTH * 7, behavior: "smooth" });
+  };
+
   return (
-    <div className="overflow-hidden rounded-md border border-black/5 bg-white" style={{ height: "calc(100vh - 140px)" }}>
+    <div className="relative overflow-hidden rounded-md border border-black/5 bg-white" style={{ height, ...(scrollButtons ? { maxWidth: "calc(100vw - 3rem)" } : {}) }}>
+      {scrollButtons && (
+        <div className="absolute right-2 top-1 z-30 flex gap-1">
+          <button
+            type="button"
+            onClick={() => slideTimeline(-1)}
+            className="rounded bg-white/90 border border-black/10 p-1 text-black/50 shadow-sm hover:bg-white hover:text-black/80 cursor-pointer"
+            title="左へスクロール"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => slideTimeline(1)}
+            className="rounded bg-white/90 border border-black/10 p-1 text-black/50 shadow-sm hover:bg-white hover:text-black/80 cursor-pointer"
+            title="右へスクロール"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
       <div className="flex h-full">
         {/* 左ラベル列 */}
         <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
@@ -871,8 +900,8 @@ export function GanttChart({
           ))}
         </div>
 
-        {/* 右タイムライン */}
-        <div className="flex-1 overflow-auto" ref={scrollRef}>
+        {/* 右タイムライン（min-w-0 でセル内でも幅が縮み、横スクロールが効くようにする） */}
+        <div className="flex-1 min-w-0 overflow-auto" ref={scrollRef}>
           <div style={{ width: totalDays * DAY_WIDTH, minHeight: "100%" }}>
             <DateHeader start={range.start} totalDays={totalDays} />
 

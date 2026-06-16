@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MemberSelect } from "@/components/member-select";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PHASE_STATUS_OPTIONS } from "@/lib/constants";
-import type { Member, Phase, PhaseFormData } from "@/lib/types/models";
+import type { Member, Phase, PhaseFormData, Project } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, ArrowRight, GripVertical } from "lucide-react";
+// 一覧の行展開でも「ガント」タブと同じ操作感にするため本物の GanttChart を流用。
+// gantt-chart ↔ phase-panel の循環 import を避けるため lazy で読み込む。
+const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import {
   DndContext,
   closestCenter,
@@ -82,21 +85,28 @@ function phaseToForm(phase: Phase): PhaseFormData {
 
 export function PhasePanel({
   projectId,
+  project,
   members,
   directorId,
   designerId,
   engineerId,
   onPhasesChange,
+  defaultView = "gantt",
 }: {
   projectId: string;
+  project: Project;
   members: Member[];
   directorId?: string | null;
   designerId?: string | null;
   engineerId?: string | null;
   onPhasesChange?: () => void;
+  defaultView?: "gantt" | "list";
 }) {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [loading, setLoading] = useState(true);
+  // 初期ロード＋フェーズ自動生成が完了してからガントを描画する（生成前に空ガントが出るのを防ぐ）
+  const [ready, setReady] = useState(false);
+  const [view, setView] = useState<"gantt" | "list">(defaultView);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const [form, setForm] = useState<PhaseFormData>(EMPTY_FORM);
@@ -121,6 +131,7 @@ export function PhasePanel({
 
   useEffect(() => {
     insertingRef.current = false;
+    setReady(false);
     loadPhases().then(async (data) => {
       if (data && data.length === 0 && !insertingRef.current) {
         insertingRef.current = true;
@@ -140,6 +151,7 @@ export function PhasePanel({
         await loadPhases();
         onPhasesChange?.();
       }
+      setReady(true);
     });
   }, [projectId]);
 
@@ -286,65 +298,112 @@ export function PhasePanel({
       {/* フェーズ一覧 */}
       <div className="px-4 py-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-black/50">フェーズ</span>
-          <button
-            onClick={startAdd}
-            className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-[#4a9eff] hover:bg-[#4a9eff]/10 cursor-pointer"
-          >
-            <Plus size={12} />
-            追加
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-black/50">フェーズ</span>
+            {/* リスト / ガント 切替 */}
+            <div className="flex gap-0.5 rounded-md bg-black/5 p-0.5">
+              <button
+                onClick={() => setView("gantt")}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[11px] cursor-pointer transition-colors",
+                  view === "gantt" ? "bg-white text-black/70 shadow-sm" : "text-black/40 hover:text-black/60"
+                )}
+              >
+                ガント
+              </button>
+              <button
+                onClick={() => {
+                  // ガント側で編集された内容を反映するため、リストへ戻る際に再読込
+                  loadPhases();
+                  setView("list");
+                }}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[11px] cursor-pointer transition-colors",
+                  view === "list" ? "bg-white text-black/70 shadow-sm" : "text-black/40 hover:text-black/60"
+                )}
+              >
+                リスト
+              </button>
+            </div>
+          </div>
+          {view === "list" && (
+            <button
+              onClick={startAdd}
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-[#4a9eff] hover:bg-[#4a9eff]/10 cursor-pointer"
+            >
+              <Plus size={12} />
+              追加
+            </button>
+          )}
         </div>
 
-        {phases.length === 0 && !addingNew && (
-          <p className="py-2 text-xs text-black/30">フェーズがありません</p>
-        )}
+        {view === "gantt" ? (
+          /* ガント表示：「ガント」タブと同じ GanttChart を単一施策で流用（操作感を統一） */
+          ready ? (
+            <Suspense fallback={<div className="py-6 text-center text-xs text-black/30">読み込み中...</div>}>
+              <GanttChart
+                projects={[project]}
+                members={members}
+                height={`${Math.min(48 + (phases.length + 1) * 32 + 24, 520)}px`}
+                scrollButtons
+              />
+            </Suspense>
+          ) : (
+            <div className="py-6 text-center text-xs text-black/30">読み込み中...</div>
+          )
+        ) : (
+          <>
+            {phases.length === 0 && !addingNew && (
+              <p className="py-2 text-xs text-black/30">フェーズがありません</p>
+            )}
 
-        {/* フェーズリスト */}
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-0.5">
-              {phases.map((phase) => {
-                if (editingId === phase.id) {
-                  return (
-                    <PhaseForm
-                      key={phase.id}
-                      form={form}
-                      setForm={setForm}
-                      members={members}
-                      phases={phases.filter((p) => p.id !== phase.id)}
-                      onSave={handleUpdate}
-                      onCancel={cancel}
-                      isEdit
-                    />
-                  );
-                }
+            {/* フェーズリスト */}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={phases.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-0.5">
+                  {phases.map((phase) => {
+                    if (editingId === phase.id) {
+                      return (
+                        <PhaseForm
+                          key={phase.id}
+                          form={form}
+                          setForm={setForm}
+                          members={members}
+                          phases={phases.filter((p) => p.id !== phase.id)}
+                          onSave={handleUpdate}
+                          onCancel={cancel}
+                          isEdit
+                        />
+                      );
+                    }
 
-                return (
-                  <SortablePhaseRow
-                    key={phase.id}
-                    phase={phase}
-                    phases={phases}
-                    onEdit={() => startEdit(phase)}
-                    onDelete={() => handleDelete(phase.id)}
-                    statusIcon={statusIcon}
-                  />
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
+                    return (
+                      <SortablePhaseRow
+                        key={phase.id}
+                        phase={phase}
+                        phases={phases}
+                        onEdit={() => startEdit(phase)}
+                        onDelete={() => handleDelete(phase.id)}
+                        statusIcon={statusIcon}
+                      />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
 
-        {/* 新規追加フォーム */}
-        {addingNew && (
-          <PhaseForm
-            form={form}
-            setForm={setForm}
-            members={members}
-            phases={phases}
-            onSave={handleAdd}
-            onCancel={cancel}
-          />
+            {/* 新規追加フォーム */}
+            {addingNew && (
+              <PhaseForm
+                form={form}
+                setForm={setForm}
+                members={members}
+                phases={phases}
+                onSave={handleAdd}
+                onCancel={cancel}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

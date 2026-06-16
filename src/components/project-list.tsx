@@ -615,7 +615,7 @@ const SortableRow = memo(function SortableRow({
     {isExpanded && (
       <tr>
         <td colSpan={13} className="p-0">
-          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
+          <PhasePanel projectId={project.id} project={project} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
     )}
@@ -797,7 +797,7 @@ const ProjectRow = memo(function ProjectRow({
     {isExpanded && (
       <tr>
         <td colSpan={9} className="p-0">
-          <PhasePanel projectId={project.id} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
+          <PhasePanel projectId={project.id} project={project} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
     )}
