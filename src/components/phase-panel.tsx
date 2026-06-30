@@ -30,6 +30,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 // role: "director" | "designer" | "engineer" で施策の担当者を自動割り当て
 const DEFAULT_PHASES: { name: string; role?: "director" | "designer" | "engineer" }[] = [
+  { name: "ディレクターキックオフ", role: "director" },
   { name: "要求定義_作成", role: "director" },
   { name: "要求定義_レビュー", role: "director" },
   { name: "要求定義_修正〜fix", role: "director" },
