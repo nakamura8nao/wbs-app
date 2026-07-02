@@ -141,6 +141,7 @@ export type Database = {
           traditional_hours: number | null;
           ai_target_hours: number | null;
           actual_hours: number | null;
+          notes: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -156,6 +157,7 @@ export type Database = {
           traditional_hours?: number | null;
           ai_target_hours?: number | null;
           actual_hours?: number | null;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -169,6 +171,7 @@ export type Database = {
           traditional_hours?: number | null;
           ai_target_hours?: number | null;
           actual_hours?: number | null;
+          notes?: string | null;
           updated_at?: string;
         };
         Relationships: [];

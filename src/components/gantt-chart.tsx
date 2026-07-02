@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Trash2, UserRoundCheck } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Trash2, UserRoundCheck, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -615,6 +615,7 @@ export function GanttChart({
       ai_target_hours: phase.ai_target_hours?.toString() ?? "",
       actual_hours: phase.actual_hours?.toString() ?? "",
       depends_on_phase_id: phase.dependencies?.[0]?.depends_on_phase_id ?? "",
+      notes: phase.notes ?? "",
     });
   };
 
@@ -632,6 +633,7 @@ export function GanttChart({
         traditional_hours: editForm.traditional_hours ? parseFloat(editForm.traditional_hours) : null,
         ai_target_hours: editForm.ai_target_hours ? parseFloat(editForm.ai_target_hours) : null,
         actual_hours: editForm.actual_hours ? parseFloat(editForm.actual_hours) : null,
+        notes: editForm.notes.trim() || null,
       } as never)
       .eq("id", editingPhaseId);
 
@@ -679,6 +681,7 @@ export function GanttChart({
       ai_target_hours: "",
       actual_hours: "",
       depends_on_phase_id: "",
+      notes: "",
     });
   };
 
@@ -699,6 +702,7 @@ export function GanttChart({
       traditional_hours: addForm.traditional_hours ? parseFloat(addForm.traditional_hours) : null,
       ai_target_hours: addForm.ai_target_hours ? parseFloat(addForm.ai_target_hours) : null,
       actual_hours: addForm.actual_hours ? parseFloat(addForm.actual_hours) : null,
+      notes: addForm.notes.trim() || null,
     } as never);
 
     setAddingForProjectId(null);
@@ -1119,6 +1123,15 @@ function SortableGanttPhaseLabel({
             className="block truncate text-sm text-black/60"
           />
         </div>
+        {phase.notes && (
+          <HoverTooltip
+            text=""
+            tooltip={<span className="whitespace-pre-wrap">{phase.notes}</span>}
+            className="shrink-0 flex items-center text-[#4a9eff]/70 hover:text-[#4a9eff]"
+          >
+            <StickyNote size={13} />
+          </HoverTooltip>
+        )}
       </div>
       {/* 担当 */}
       <div className="w-16 shrink-0 flex items-center px-2 border-l border-black/5">
