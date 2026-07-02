@@ -7,7 +7,7 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -420,6 +420,36 @@ function InlineDateCell({
   );
 }
 
+// 公開目安のピン留めトグル。事業部等により期日が確定しており「絶対に動かせない期日」であることを示す。
+// 重要度（優先度）とは独立した軸。未ピンは通常の「目安」でニュートラル、クリックで赤いピンに切り替わる。
+function UrgentToggle({
+  urgent,
+  onToggle,
+}: {
+  urgent: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(!urgent);
+      }}
+      aria-pressed={urgent}
+      data-tooltip={urgent ? "絶対に動かせない期日：事業部等により期日が確定しており、後ろ倒しできない。クリックで解除。" : "クリックで「絶対に動かせない期日」としてピン留め。事業部等により期日が確定していることを示す（未ピンは通常の目安）。"}
+      className={cn(
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors cursor-pointer",
+        urgent
+          ? "text-red-500 hover:text-red-600"
+          : "text-slate-300 hover:text-slate-400"
+      )}
+    >
+      <Pin size={15} fill={urgent ? "currentColor" : "none"} />
+    </button>
+  );
+}
+
 // ドラッグ可能な行
 const SortableRow = memo(function SortableRow({
   project,
@@ -528,12 +558,18 @@ const SortableRow = memo(function SortableRow({
           </Link>
         </span>
       </td>
-      <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <InlineDateCell
-          value={project.target_date}
-          tentative={project.target_date_tentative}
-          onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
-        />
+      <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
+        <span className="flex items-center gap-1.5">
+          <UrgentToggle
+            urgent={project.is_urgent}
+            onToggle={(next) => onUpdateField(project.id, { is_urgent: next })}
+          />
+          <InlineDateCell
+            value={project.target_date}
+            tentative={project.target_date_tentative}
+            onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
+          />
+        </span>
       </td>
       <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
@@ -692,12 +728,18 @@ const ProjectRow = memo(function ProjectRow({
           </Link>
         </span>
       </td>
-      <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <InlineDateCell
-          value={project.target_date}
-          tentative={project.target_date_tentative}
-          onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
-        />
+      <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
+        <span className="flex items-center gap-1.5">
+          <UrgentToggle
+            urgent={project.is_urgent}
+            onToggle={(next) => onUpdateField(project.id, { is_urgent: next })}
+          />
+          <InlineDateCell
+            value={project.target_date}
+            tentative={project.target_date_tentative}
+            onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
+          />
+        </span>
       </td>
       <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
@@ -1035,6 +1077,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       priority_undecided: true,
       target_date: project.target_date,
       target_date_tentative: project.target_date_tentative,
+      is_urgent: project.is_urgent,
       director_id: project.director_id,
       engineer_id: project.engineer_id,
       designer_id: project.designer_id,
@@ -1166,7 +1209,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         </th>
         <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", th)}><span className="hidden min-[1500px]:inline">事業</span></th>
         <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>タイトル</th>
-        <th scope="col" className={cn("w-32 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>
+        <th scope="col" className={cn("w-36 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>
           <button
             type="button"
             onClick={toggleTargetDateSort}
@@ -1437,7 +1480,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           <tr className={theadClasses}>
                             <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
                             <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                            <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+                            <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
                             <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                             <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                             <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
@@ -1569,7 +1612,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       {/* ガントチャートビュー */}
       {viewMode === "gantt" && (
         <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
-          <GanttChart projects={activeProjects} members={members} />
+          <GanttChart projects={activeProjects} members={members} filterMemberId={filterMemberId} />
         </Suspense>
       )}
 

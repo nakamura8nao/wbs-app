@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Trash2, UserRoundCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project, Member, Phase, PhaseFormData } from "@/lib/types/models";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -492,11 +492,14 @@ export function GanttChart({
   members,
   height = "calc(100vh - 140px)",
   scrollButtons = false,
+  filterMemberId = "",
 }: {
   projects: Project[];
   members: Member[];
   height?: string;
   scrollButtons?: boolean;
+  // 施策一覧側でメンバー絞り込み中のときの対象メンバー。指定時のみ「他の人のフェーズを隠す」トグルを出す。
+  filterMemberId?: string;
 }) {
   const [ganttProjects, setGanttProjects] = useState<GanttProject[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(initialProjects.map((p) => p.id)));
@@ -505,6 +508,8 @@ export function GanttChart({
   const [addingForProjectId, setAddingForProjectId] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<PhaseFormData | null>(null);
   const [hideCompleted, setHideCompleted] = useState(false);
+  // 絞り込み対象メンバー以外が担当するフェーズを隠すトグル
+  const [hideOthers, setHideOthers] = useState(false);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const labelScrollRef = useRef<HTMLDivElement>(null);
@@ -757,9 +762,17 @@ export function GanttChart({
   const totalDays = diffDays(range.start, range.end) + 1;
   const todayOffset = diffDays(range.start, new Date());
 
-  // 表示するフェーズ（完了を非表示にするトグル対応）。データ操作は ganttProjects のまま。
-  const visiblePhases = (proj: GanttProject) =>
-    hideCompleted ? proj.phases.filter((p) => p.status !== "完了") : proj.phases;
+  // 「他の人のフェーズを隠す」が有効なのは、絞り込み対象メンバーが指定されているときだけ。
+  const canHideOthers = filterMemberId !== "";
+  const hideOthersActive = canHideOthers && hideOthers;
+
+  // 表示するフェーズ（完了非表示・他メンバー非表示のトグル対応）。データ操作は ganttProjects のまま。
+  const visiblePhases = (proj: GanttProject) => {
+    let phases = proj.phases;
+    if (hideCompleted) phases = phases.filter((p) => p.status !== "完了");
+    if (hideOthersActive) phases = phases.filter((p) => p.assignee_id === filterMemberId);
+    return phases;
+  };
 
   // 行データを構築
   const rows: { type: "project" | "phase"; project: GanttProject; phase?: GanttPhase }[] = [];
@@ -813,16 +826,34 @@ export function GanttChart({
                   type="button"
                   onClick={() => setHideCompleted((v) => !v)}
                   className={cn(
-                    "shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors",
+                    "shrink-0 inline-flex items-center justify-center rounded-md p-1.5 cursor-pointer transition-colors",
                     hideCompleted
                       ? "bg-red-500/10 text-red-500"
                       : "text-black/40 hover:bg-black/5 hover:text-black/60"
                   )}
-                  title={hideCompleted ? "完了フェーズを表示" : "完了フェーズを非表示"}
+                  data-tooltip={hideCompleted ? "完了フェーズを表示" : "完了フェーズを非表示"}
                 >
                   {hideCompleted ? <EyeOff size={14} /> : <Eye size={14} />}
-                  完了を非表示
                 </button>
+                {canHideOthers && (
+                  <button
+                    type="button"
+                    onClick={() => setHideOthers((v) => !v)}
+                    className={cn(
+                      "shrink-0 inline-flex items-center justify-center rounded-md p-1.5 cursor-pointer transition-colors",
+                      hideOthers
+                        ? "bg-red-500/10 text-red-500"
+                        : "text-black/40 hover:bg-black/5 hover:text-black/60"
+                    )}
+                    data-tooltip={
+                      hideOthers
+                        ? "全員のフェーズを表示"
+                        : `${members.find((m) => m.id === filterMemberId)?.display_name ?? "対象者"}のフェーズだけ表示`
+                    }
+                  >
+                    <UserRoundCheck size={14} />
+                  </button>
+                )}
               </div>
               <span className="mt-0.5 flex items-center gap-2 text-[10px] text-black/45">
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-white border border-slate-300" />未着手</span>
