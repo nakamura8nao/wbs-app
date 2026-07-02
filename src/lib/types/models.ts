@@ -20,6 +20,7 @@ export type Project = {
   priority_undecided: boolean;
   target_date: string | null;
   target_date_tentative: boolean;
+  is_urgent: boolean;
   director_id: string | null;
   engineer_id: string | null;
   designer_id: string | null;
