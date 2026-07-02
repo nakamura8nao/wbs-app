@@ -7,7 +7,7 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { PHASE_STATUS_OPTIONS } from "@/lib/constants";
 import type { Member, Phase, PhaseFormData, Project } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, ArrowRight, GripVertical } from "lucide-react";
+import { Plus, Trash2, ArrowRight, GripVertical, StickyNote } from "lucide-react";
 // 一覧の行展開でも「ガント」タブと同じ操作感にするため本物の GanttChart を流用。
 // gantt-chart ↔ phase-panel の循環 import を避けるため lazy で読み込む。
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -68,6 +68,7 @@ const EMPTY_FORM: PhaseFormData = {
   ai_target_hours: "",
   actual_hours: "",
   depends_on_phase_id: "",
+  notes: "",
 };
 
 function phaseToForm(phase: Phase): PhaseFormData {
@@ -81,6 +82,7 @@ function phaseToForm(phase: Phase): PhaseFormData {
     ai_target_hours: phase.ai_target_hours?.toString() ?? "",
     actual_hours: phase.actual_hours?.toString() ?? "",
     depends_on_phase_id: phase.dependencies?.[0]?.depends_on_phase_id ?? "",
+    notes: phase.notes ?? "",
   };
 }
 
@@ -174,6 +176,7 @@ export function PhasePanel({
         traditional_hours: form.traditional_hours ? parseFloat(form.traditional_hours) : null,
         ai_target_hours: form.ai_target_hours ? parseFloat(form.ai_target_hours) : null,
         actual_hours: form.actual_hours ? parseFloat(form.actual_hours) : null,
+        notes: form.notes.trim() || null,
       } as never)
       .select()
       .single();
@@ -206,6 +209,7 @@ export function PhasePanel({
         traditional_hours: form.traditional_hours ? parseFloat(form.traditional_hours) : null,
         ai_target_hours: form.ai_target_hours ? parseFloat(form.ai_target_hours) : null,
         actual_hours: form.actual_hours ? parseFloat(form.actual_hours) : null,
+        notes: form.notes.trim() || null,
       } as never)
       .eq("id", editingId);
 
@@ -460,8 +464,17 @@ function SortablePhaseRow({
         <GripVertical size={14} />
       </button>
       <ProgressIcon value={statusIcon(phase.status)} size={14} />
-      <span className="min-w-0 truncate text-sm text-black/80">
-        {phase.name}
+      <span className="flex min-w-0 items-center gap-1 text-sm text-black/80">
+        <span className="min-w-0 truncate">{phase.name}</span>
+        {phase.notes && (
+          <span
+            data-tooltip={phase.notes}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 cursor-help text-[#4a9eff]/70 hover:text-[#4a9eff]"
+          >
+            <StickyNote size={13} />
+          </span>
+        )}
       </span>
       <span className="flex items-center gap-1 text-xs text-black/60">
         {depPhase && (
@@ -633,6 +646,18 @@ export function PhaseForm({
             step={0.5}
           />
         </div>
+      </div>
+
+      {/* 行5: メモ */}
+      <div>
+        <label className="mb-0.5 block text-[11px] text-black/40">メモ</label>
+        <textarea
+          value={form.notes}
+          onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+          placeholder="このフェーズのメモ（ホバーで表示されます）"
+          rows={2}
+          className={cn(inputClass, "h-auto w-full resize-y py-1.5 leading-relaxed")}
+        />
       </div>
 
       {/* ボタン */}

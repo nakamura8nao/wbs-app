@@ -52,6 +52,7 @@ export type Phase = {
   traditional_hours: number | null;
   ai_target_hours: number | null;
   actual_hours: number | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
   // JOINで取得
@@ -70,6 +71,7 @@ export type PhaseFormData = {
   ai_target_hours: string;
   actual_hours: string;
   depends_on_phase_id: string;
+  notes: string;
 };
 
 export type ProjectFormData = {
