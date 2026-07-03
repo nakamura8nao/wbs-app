@@ -41,6 +41,7 @@ const EMPTY_FORM: ProjectFormData = {
   priority: 0,
   target_date: "",
   target_date_tentative: false,
+  is_petit_improvement: false,
   director_id: "",
   engineer_id: "",
   designer_id: "",
@@ -136,6 +137,7 @@ export function ProjectDialog({
         priority: defaultValues.priority,
         target_date: defaultValues.target_date ?? "",
         target_date_tentative: defaultValues.target_date_tentative ?? false,
+        is_petit_improvement: defaultValues.is_petit_improvement ?? false,
         director_id: defaultValues.director_id ?? "",
         engineer_id: defaultValues.engineer_id ?? "",
         designer_id: defaultValues.designer_id ?? "",
@@ -346,6 +348,29 @@ export function ProjectDialog({
                 />
               </FormField>
             </div>
+          </FormSection>
+
+          {/* プチ改善 */}
+          <FormSection title="プチ改善">
+            <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
+              <input
+                type="checkbox"
+                checked={form.is_petit_improvement}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    is_petit_improvement: e.target.checked,
+                  }))
+                }
+                className="mt-0.5 h-4 w-4 cursor-pointer"
+              />
+              <span className="text-sm leading-snug">
+                <span className="font-medium text-slate-700">プチ改善タスクにする</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  オンにすると通常の一覧から外れ、「プチ改善」ビューに集約されます（メイン開発の裏で少しずつ消化する小さな改善）。
+                </span>
+              </span>
+            </label>
           </FormSection>
 
           {/* 備考 */}
