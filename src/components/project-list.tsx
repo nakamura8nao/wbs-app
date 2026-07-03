@@ -687,6 +687,7 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority,
   hideSize,
   showProposedDate,
+  showPetitBadge,
   members,
 }: {
   project: Project;
@@ -701,6 +702,7 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority?: boolean;
   hideSize?: boolean;
   showProposedDate?: boolean;
+  showPetitBadge?: boolean;
   members: Member[];
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -732,6 +734,11 @@ const ProjectRow = memo(function ProjectRow({
       <td className="min-w-[240px] py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
         <span className="flex items-center gap-1 group/title">
           {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+          {showPetitBadge && project.is_petit_improvement && (
+            <span className="inline-flex shrink-0 text-violet-500" data-tooltip="プチ改善から公開された施策">
+              <Sparkles size={14} />
+            </span>
+          )}
           {project.title}
           <Link
             href={`/projects/${project.id}`}
@@ -956,8 +963,10 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     return groups.filter((g) => g.items.length > 0);
   }, [undecidedProjects]);
 
+  // 公開済み（完了）は通常施策・プチ改善施策の両方を含める。
+  // プチ改善由来のものは公開済みビューで紫のプチ改善アイコンを付けて区別する。
   const releasedProjects = useMemo(() =>
-    [...projects.filter((p) => p.status === "完了" && !p.is_petit_improvement && filterProject(p))]
+    [...projects.filter((p) => p.status === "完了" && filterProject(p))]
       .sort((a, b) => {
         if (!a.target_date && !b.target_date) return 0;
         if (!a.target_date) return 1;
@@ -967,15 +976,10 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     [projects, filterProject]
   );
 
-  // プチ改善ビュー：フラグ付き施策のみ。未完了を上・完了を下、各群は優先度順（DBの priority 昇順）。
+  // プチ改善ビュー：未完了のプチ改善バックログのみ（完了したものは公開済みビューへ卒業）。優先度順。
   const petitProjects = useMemo(() =>
-    [...projects.filter((p) => p.is_petit_improvement && filterProject(p))]
-      .sort((a, b) => {
-        const aDone = a.status === "完了" ? 1 : 0;
-        const bDone = b.status === "完了" ? 1 : 0;
-        if (aDone !== bDone) return aDone - bDone;
-        return a.priority - b.priority;
-      }),
+    [...projects.filter((p) => p.is_petit_improvement && p.status !== "完了" && filterProject(p))]
+      .sort((a, b) => a.priority - b.priority),
     [projects, filterProject]
   );
 
@@ -1307,6 +1311,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               優先度順
             </button>
             <button
+              onClick={() => setViewMode("petit")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "petit"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+            >
+              <Sparkles size={14} />
+              プチ改善
+            </button>
+            <button
               onClick={() => setViewMode("engineer")}
               className={cn(
                 "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
@@ -1349,18 +1365,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               )}
             >
               公開済み
-            </button>
-            <button
-              onClick={() => setViewMode("petit")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "petit"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              <Sparkles size={14} />
-              プチ改善
             </button>
           </div>
           {/* メンバーフィルター */}
@@ -1664,6 +1668,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                     onPhasesChange={reloadPhaseAssignees}
                     hidePriority
                     showProposedDate
+                    showPetitBadge
                     members={members}
                   />
                 ))
