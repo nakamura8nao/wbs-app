@@ -7,7 +7,7 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -40,7 +40,7 @@ type Props = {
   members: Member[];
 };
 
-type ViewMode = "priority" | "group" | "engineer" | "gantt" | "released";
+type ViewMode = "priority" | "group" | "engineer" | "gantt" | "released" | "petit";
 
 const sizeLabel = (value: string | null) => {
   if (!value) return "-";
@@ -83,6 +83,8 @@ function ProjectActionMenu({
   onDelete,
   onTogglePriority,
   priorityLabel,
+  onTogglePetit,
+  petitLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,6 +94,8 @@ function ProjectActionMenu({
   onDelete: () => void;
   onTogglePriority?: () => void;
   priorityLabel?: string;
+  onTogglePetit?: () => void;
+  petitLabel?: string;
 }) {
   return (
     <Menu.Root open={open} onOpenChange={(open) => onOpenChange(open)} modal={false}>
@@ -110,6 +114,12 @@ function ProjectActionMenu({
               <Menu.Item className={cn(menuItemClasses, "text-amber-600 data-highlighted:text-amber-700")} onClick={onTogglePriority}>
                 <ArrowUpDown size={14} />
                 {priorityLabel}
+              </Menu.Item>
+            )}
+            {onTogglePetit && (
+              <Menu.Item className={cn(menuItemClasses, "text-violet-600 data-highlighted:text-violet-700")} onClick={onTogglePetit}>
+                <Sparkles size={14} />
+                {petitLabel}
               </Menu.Item>
             )}
             <Menu.Item className={cn(menuItemClasses, "text-red-500 data-highlighted:bg-red-50 data-highlighted:text-red-600")} onClick={onDelete}>
@@ -459,6 +469,7 @@ const SortableRow = memo(function SortableRow({
   onDuplicate,
   onDelete,
   onTogglePriority,
+  onTogglePetit,
   onUpdateField,
   onPhasesChange,
   members,
@@ -471,6 +482,7 @@ const SortableRow = memo(function SortableRow({
   onDuplicate: () => void;
   onDelete: () => void;
   onTogglePriority?: () => void;
+  onTogglePetit?: () => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   members: Member[];
@@ -647,6 +659,8 @@ const SortableRow = memo(function SortableRow({
       onDelete={onDelete}
       onTogglePriority={onTogglePriority}
       priorityLabel={project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
+      onTogglePetit={onTogglePetit}
+      petitLabel={project.is_petit_improvement ? "プチ改善から戻す" : "プチ改善に移動"}
     />
     {isExpanded && (
       <tr>
@@ -667,6 +681,7 @@ const ProjectRow = memo(function ProjectRow({
   onEdit,
   onDuplicate,
   onDelete,
+  onTogglePetit,
   onUpdateField,
   onPhasesChange,
   hidePriority,
@@ -680,6 +695,7 @@ const ProjectRow = memo(function ProjectRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onTogglePetit?: () => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   hidePriority?: boolean;
@@ -835,6 +851,8 @@ const ProjectRow = memo(function ProjectRow({
       onEdit={onEdit}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
+      onTogglePetit={onTogglePetit}
+      petitLabel={project.is_petit_improvement ? "プチ改善から戻す" : "プチ改善に移動"}
     />
     {isExpanded && (
       <tr>
@@ -903,8 +921,10 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     return true;
   }, [filterMemberId, filterStartStatus, phaseAssigneesByProjectId]);
 
+  // プチ改善フラグ付き施策は通常の一覧（優先度順/Eng別/事業別/ガント/公開済み）から外し、
+  // 専用のプチ改善ビューに集約する。
   // 公開済み（完了）とそれ以外を分離
-  const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && filterProject(p)), [projects, filterProject]);
+  const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && !p.is_petit_improvement && filterProject(p)), [projects, filterProject]);
   const decidedProjects = useMemo(() => activeProjects.filter((p) => !p.priority_undecided), [activeProjects]);
   const undecidedProjects = useMemo(() => activeProjects.filter((p) => p.priority_undecided), [activeProjects]);
 
@@ -937,12 +957,24 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   }, [undecidedProjects]);
 
   const releasedProjects = useMemo(() =>
-    [...projects.filter((p) => p.status === "完了" && filterProject(p))]
+    [...projects.filter((p) => p.status === "完了" && !p.is_petit_improvement && filterProject(p))]
       .sort((a, b) => {
         if (!a.target_date && !b.target_date) return 0;
         if (!a.target_date) return 1;
         if (!b.target_date) return -1;
         return b.target_date.localeCompare(a.target_date);
+      }),
+    [projects, filterProject]
+  );
+
+  // プチ改善ビュー：フラグ付き施策のみ。未完了を上・完了を下、各群は優先度順（DBの priority 昇順）。
+  const petitProjects = useMemo(() =>
+    [...projects.filter((p) => p.is_petit_improvement && filterProject(p))]
+      .sort((a, b) => {
+        const aDone = a.status === "完了" ? 1 : 0;
+        const bDone = b.status === "完了" ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return a.priority - b.priority;
       }),
     [projects, filterProject]
   );
@@ -1003,10 +1035,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 既存の決定済み施策の priority を +1 してずらす
-    const decided = projects.filter((p) => !p.priority_undecided && p.status !== "完了");
-    for (const p of decided) {
-      await supabase.from("projects").update({ priority: p.priority + 1 } as never).eq("id", p.id);
+    // プチ改善タスクは通常の優先度順一覧に載らないため、既存の priority はずらさない
+    if (!formData.is_petit_improvement) {
+      // 既存の決定済み施策の priority を +1 してずらす
+      const decided = projects.filter((p) => !p.priority_undecided && p.status !== "完了");
+      for (const p of decided) {
+        await supabase.from("projects").update({ priority: p.priority + 1 } as never).eq("id", p.id);
+      }
     }
 
     await supabase.from("projects").insert({
@@ -1019,6 +1054,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       priority_undecided: false,
       target_date: formData.target_date || null,
       target_date_tentative: formData.target_date_tentative,
+      is_petit_improvement: formData.is_petit_improvement,
       director_id: formData.director_id || null,
       engineer_id: formData.engineer_id || null,
       designer_id: formData.designer_id || null,
@@ -1046,6 +1082,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         priority: formData.priority,
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
+        is_petit_improvement: formData.is_petit_improvement,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
         designer_id: formData.designer_id || null,
@@ -1078,6 +1115,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       target_date: project.target_date,
       target_date_tentative: project.target_date_tentative,
       is_urgent: project.is_urgent,
+      is_petit_improvement: project.is_petit_improvement,
       director_id: project.director_id,
       engineer_id: project.engineer_id,
       designer_id: project.designer_id,
@@ -1099,6 +1137,15 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
 
   const handleUpdateField = useCallback(async (id: string, patch: Partial<Project>) => {
     await supabase.from("projects").update(patch as never).eq("id", id);
+    await reload();
+  }, [supabase, reload]);
+
+  // プチ改善フラグの付け外し。付けると通常一覧から外れ、プチ改善ビューへ集約される。
+  const handleTogglePetit = useCallback(async (project: Project) => {
+    await supabase
+      .from("projects")
+      .update({ is_petit_improvement: !project.is_petit_improvement } as never)
+      .eq("id", project.id);
     await reload();
   }, [supabase, reload]);
 
@@ -1303,6 +1350,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
             >
               公開済み
             </button>
+            <button
+              onClick={() => setViewMode("petit")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "petit"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+            >
+              <Sparkles size={14} />
+              プチ改善
+            </button>
           </div>
           {/* メンバーフィルター */}
           <select
@@ -1381,6 +1440,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onDuplicate={() => handleDuplicate(project)}
                           onDelete={() => handleDelete(project.id)}
                           onTogglePriority={() => handleTogglePriority(project)}
+                          onTogglePetit={() => handleTogglePetit(project)}
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
@@ -1426,6 +1486,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                           onDuplicate={() => handleDuplicate(project)}
                           onDelete={() => handleDelete(project.id)}
                           onTogglePriority={() => handleTogglePriority(project)}
+                          onTogglePetit={() => handleTogglePetit(project)}
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           members={members}
@@ -1500,6 +1561,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                               onEdit={() => setEditingProject(project)}
                               onDuplicate={() => handleDuplicate(project)}
                               onDelete={() => handleDelete(project.id)}
+                              onTogglePetit={() => handleTogglePetit(project)}
                               onUpdateField={handleUpdateField}
                               onPhasesChange={reloadPhaseAssignees}
                               hideSize
@@ -1546,6 +1608,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                         onEdit={() => setEditingProject(project)}
                         onDuplicate={() => handleDuplicate(project)}
                         onDelete={() => handleDelete(project.id)}
+                        onTogglePetit={() => handleTogglePetit(project)}
                         onUpdateField={handleUpdateField}
                         onPhasesChange={reloadPhaseAssignees}
                         members={members}
@@ -1596,6 +1659,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                     onEdit={() => setEditingProject(project)}
                     onDuplicate={() => handleDuplicate(project)}
                     onDelete={() => handleDelete(project.id)}
+                    onTogglePetit={() => handleTogglePetit(project)}
                     onUpdateField={handleUpdateField}
                     onPhasesChange={reloadPhaseAssignees}
                     hidePriority
@@ -1614,6 +1678,70 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
           <GanttChart projects={activeProjects} members={members} filterMemberId={filterMemberId} />
         </Suspense>
+      )}
+
+      {/* プチ改善ビュー */}
+      {viewMode === "petit" && (
+        <div className="space-y-4">
+          {/* 取り組みの説明バナー */}
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-5 py-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-violet-500" />
+              <h3 className="text-sm font-semibold text-violet-900">プチ改善</h3>
+              <span className="text-xs text-violet-700">{petitProjects.length}件</span>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-violet-800/80">
+              メイン開発の裏で後回しになりがちな「小さな修正・改善」を少しずつ消化する枠。
+              1日30分を目安に、隔週でアサインを決めて気軽に進めます。
+              施策の編集または行メニューの「プチ改善に移動」でここに集約できます。
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={theadClasses}>
+                  <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                  <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                  <th scope="col" className="w-8 py-3 px-2"></th>
+                  <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
+                  <th scope="col" className="w-10 py-3 px-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {petitProjects.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-16 text-center text-base text-slate-500">
+                      プチ改善タスクはまだありません。施策の編集または行メニューの「プチ改善に移動」で追加できます。
+                    </td>
+                  </tr>
+                ) : (
+                  petitProjects.map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      project={project}
+                      isExpanded={expandedProjectId === project.id}
+                      onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                      onEdit={() => setEditingProject(project)}
+                      onDuplicate={() => handleDuplicate(project)}
+                      onDelete={() => handleDelete(project.id)}
+                      onTogglePetit={() => handleTogglePetit(project)}
+                      onUpdateField={handleUpdateField}
+                      onPhasesChange={reloadPhaseAssignees}
+                      hidePriority
+                      hideSize
+                      members={members}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* 新規作成ダイアログ */}
