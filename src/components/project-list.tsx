@@ -1307,6 +1307,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               優先度順
             </button>
             <button
+              onClick={() => setViewMode("petit")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "petit"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+            >
+              <Sparkles size={14} />
+              プチ改善
+            </button>
+            <button
               onClick={() => setViewMode("engineer")}
               className={cn(
                 "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
@@ -1349,18 +1361,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               )}
             >
               公開済み
-            </button>
-            <button
-              onClick={() => setViewMode("petit")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "petit"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              <Sparkles size={14} />
-              プチ改善
             </button>
           </div>
           {/* メンバーフィルター */}
