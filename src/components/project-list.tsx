@@ -688,6 +688,7 @@ const ProjectRow = memo(function ProjectRow({
   hideSize,
   showProposedDate,
   members,
+  sortable,
 }: {
   project: Project;
   isExpanded: boolean;
@@ -702,6 +703,14 @@ const ProjectRow = memo(function ProjectRow({
   hideSize?: boolean;
   showProposedDate?: boolean;
   members: Member[];
+  // ドラッグ並び替え対応（プチ改善ビューなどで使用）。渡されると先頭にドラッグハンドル列を表示する。
+  sortable?: {
+    setNodeRef: (el: HTMLElement | null) => void;
+    style: React.CSSProperties;
+    attributes: Record<string, unknown>;
+    listeners: Record<string, unknown> | undefined;
+    isDragging: boolean;
+  };
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
@@ -723,7 +732,27 @@ const ProjectRow = memo(function ProjectRow({
 
   return (
     <>
-    <tr className="group transition-colors hover:bg-gray-50" onContextMenu={handleContextMenu}>
+    <tr
+      ref={sortable?.setNodeRef}
+      style={sortable?.style}
+      className={cn(
+        "group transition-colors hover:bg-gray-50",
+        sortable?.isDragging && "relative z-10 bg-white shadow-md"
+      )}
+      onContextMenu={handleContextMenu}
+    >
+      {sortable && (
+        <td className="w-8 py-3 px-2 text-center">
+          <span
+            {...sortable.attributes}
+            {...sortable.listeners}
+            className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+            title="ドラッグして並び替え"
+          >
+            ⠿
+          </span>
+        </td>
+      )}
       {!hidePriority && (
         <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
           {project.priority_undecided ? "-" : project.priority}
@@ -856,12 +885,37 @@ const ProjectRow = memo(function ProjectRow({
     />
     {isExpanded && (
       <tr>
-        <td colSpan={9} className="p-0">
+        <td colSpan={sortable ? 10 : 9} className="p-0">
           <PhasePanel projectId={project.id} project={project} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
     )}
     </>
+  );
+});
+
+// プチ改善ビューでドラッグ並び替えするための ProjectRow ラッパー。
+// useSortable は DndContext 内でのみ呼ぶため、通常の ProjectRow とは分離している。
+const SortableProjectRow = memo(function SortableProjectRow(
+  props: React.ComponentProps<typeof ProjectRow>
+) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.project.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <ProjectRow
+      {...props}
+      sortable={{
+        setNodeRef,
+        style,
+        attributes: attributes as unknown as Record<string, unknown>,
+        listeners: listeners as Record<string, unknown> | undefined,
+        isDragging,
+      }}
+    />
   );
 });
 
@@ -1148,6 +1202,45 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       .eq("id", project.id);
     await reload();
   }, [supabase, reload]);
+
+  // プチ改善ビューのD&D完了時：並び順を priority に反映して保存。
+  // メイン一覧とは独立させるため、プチ改善施策が元々持つ priority 値を昇順スロットとして
+  // 新しい並び順へ再割り当てする（メイン一覧の priority には手を付けない）。
+  const handlePetitDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const items = [...petitProjects];
+    const oldIndex = items.findIndex((p) => p.id === active.id);
+    const newIndex = items.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const [moved] = items.splice(oldIndex, 1);
+    items.splice(newIndex, 0, moved);
+
+    const slots = petitProjects.map((p) => p.priority).sort((a, b) => a - b);
+    const reordered = items.map((p, i) => ({ ...p, priority: slots[i] }));
+
+    // 楽観的更新
+    const reorderedById = new Map(reordered.map((p) => [p.id, p]));
+    setProjects((prev) => prev.map((p) => reorderedById.get(p.id) ?? p));
+
+    // priority が変わった行だけ保存
+    const changed = reordered.filter((p) => {
+      const orig = petitProjects.find((o) => o.id === p.id);
+      return orig && orig.priority !== p.priority;
+    });
+    if (changed.length > 0) {
+      await Promise.all(
+        changed.map((p) =>
+          supabase
+            .from("projects")
+            .update({ priority: p.priority } as never)
+            .eq("id", p.id)
+        )
+      );
+    }
+  };
 
   // D&D完了時：優先順を振り直してDBに保存
   const handleTogglePriority = async (project: Project) => {
@@ -1701,6 +1794,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
             <table className="w-full text-sm">
               <thead>
                 <tr className={theadClasses}>
+                  <th scope="col" className="w-8 py-3 px-2"></th>
                   <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
                   <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
@@ -1712,33 +1806,46 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                   <th scope="col" className="w-10 py-3 px-2"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {petitProjects.length === 0 ? (
+              {petitProjects.length === 0 ? (
+                <tbody>
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={10} className="py-16 text-center text-base text-slate-500">
                       プチ改善タスクはまだありません。施策の編集または行メニューの「プチ改善に移動」で追加できます。
                     </td>
                   </tr>
-                ) : (
-                  petitProjects.map((project) => (
-                    <ProjectRow
-                      key={project.id}
-                      project={project}
-                      isExpanded={expandedProjectId === project.id}
-                      onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                      onEdit={() => setEditingProject(project)}
-                      onDuplicate={() => handleDuplicate(project)}
-                      onDelete={() => handleDelete(project.id)}
-                      onTogglePetit={() => handleTogglePetit(project)}
-                      onUpdateField={handleUpdateField}
-                      onPhasesChange={reloadPhaseAssignees}
-                      hidePriority
-                      hideSize
-                      members={members}
-                    />
-                  ))
-                )}
-              </tbody>
+                </tbody>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handlePetitDragEnd}
+                >
+                  <SortableContext
+                    items={petitProjects.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody className="divide-y divide-slate-100">
+                      {petitProjects.map((project) => (
+                        <SortableProjectRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onTogglePetit={() => handleTogglePetit(project)}
+                          onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
+                          hidePriority
+                          hideSize
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+              )}
             </table>
           </div>
         </div>
