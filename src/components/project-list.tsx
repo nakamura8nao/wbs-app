@@ -474,6 +474,7 @@ const SortableRow = memo(function SortableRow({
   onPhasesChange,
   members,
   dragDisabled = false,
+  displayNo,
 }: {
   project: Project;
   isExpanded: boolean;
@@ -487,6 +488,8 @@ const SortableRow = memo(function SortableRow({
   onPhasesChange?: () => void;
   members: Member[];
   dragDisabled?: boolean;
+  // 表示用の連番（1始まり）。渡されると # 列に DB の priority ではなくこの値を表示する。
+  displayNo?: number;
 }) {
   const {
     attributes,
@@ -546,7 +549,7 @@ const SortableRow = memo(function SortableRow({
         )}
       </td>
       <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
-        {project.priority_undecided ? "-" : project.priority}
+        {project.priority_undecided ? "-" : displayNo ?? project.priority}
       </td>
       <td className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-xs text-slate-500 whitespace-nowrap">
         <span className="flex items-center gap-1" title={project.group_lv2 ?? project.group_lv1 ?? undefined}>
@@ -1527,10 +1530,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
                     strategy={verticalListSortingStrategy}
                   >
                     <tbody className="divide-y divide-slate-100">
-                      {displayedDecidedProjects.map((project) => (
+                      {displayedDecidedProjects.map((project, index) => (
                         <SortableRow
                           key={project.id}
                           project={project}
+                          displayNo={index + 1}
                           isExpanded={expandedProjectId === project.id}
                           onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
                           onEdit={() => setEditingProject(project)}
