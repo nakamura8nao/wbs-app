@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // auth callback / 静的ファイル / Bearer 認証API (/api/wbs) を除外
-    "/((?!_next/static|_next/image|favicon.ico|auth/callback|api/wbs|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // auth callback / 静的ファイル / Bearer・CRON_SECRET 認証API (api/wbs, api/snapshot, api/petit-stats) を除外
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|api/wbs|api/snapshot|api/petit-stats|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
