@@ -7,7 +7,7 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -1787,6 +1787,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
               <Sparkles size={16} className="text-violet-500" />
               <h3 className="text-sm font-semibold text-violet-900">プチ改善</h3>
               <span className="text-xs text-violet-700">{petitProjects.length}件</span>
+              <Link
+                href="/petit-improvement"
+                className="ml-auto flex items-center gap-1 rounded-md border border-violet-300 bg-white/60 px-2 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-white"
+              >
+                <TrendingUp size={13} />
+                増減の推移
+              </Link>
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-violet-800/80">
               メイン開発の裏で後回しになりがちな「小さな修正・改善」を少しずつ消化する枠。
