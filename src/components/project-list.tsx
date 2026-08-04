@@ -47,6 +47,16 @@ const sizeLabel = (value: string | null) => {
   return SIZE_OPTIONS.find((s) => s.value === value)?.label ?? value;
 };
 
+// 並び替えスロット。同じ priority が複数あると順序を表現できず、D&Dしても同じ値が
+// 書き戻されて行が元に戻ってしまう。昇順に並べたうえで厳密な増加列に補正する（[1,1,1] → [1,2,3]）。
+const ascendingSlots = (values: number[]) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] <= sorted[i - 1]) sorted[i] = sorted[i - 1] + 1;
+  }
+  return sorted;
+};
+
 const statusConfig = (status: string) => {
   switch (status) {
     case "完了":
@@ -1096,12 +1106,27 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // プチ改善タスクは通常の優先度順一覧に載らないため、既存の priority はずらさない
+    // プチ改善タスクは通常の優先度順一覧に載らないため、メイン一覧の priority はずらさない
     if (!formData.is_petit_improvement) {
       // 既存の決定済み施策の priority を +1 してずらす
       const decided = projects.filter((p) => !p.priority_undecided && p.status !== "完了");
       for (const p of decided) {
         await supabase.from("projects").update({ priority: p.priority + 1 } as never).eq("id", p.id);
+      }
+    } else {
+      // 新規プチ改善は priority=1（プチ改善ビューの先頭）で入れる。既存のプチ改善タスクが
+      // 1 以下に居ると同値スロットになって並び替えできなくなるので、2 以上の増加列に押し出す。
+      // 絞り込みに関係なく全プチ改善タスクを対象にするため petitProjects は使わない
+      const petit = projects
+        .filter((p) => p.is_petit_improvement && p.status !== "完了")
+        .sort((a, b) => a.priority - b.priority);
+      let prev = 1;
+      for (const p of petit) {
+        const next = Math.max(p.priority, prev + 1);
+        if (next !== p.priority) {
+          await supabase.from("projects").update({ priority: next } as never).eq("id", p.id);
+        }
+        prev = next;
       }
     }
 
@@ -1202,13 +1227,24 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   }, [supabase, reload]);
 
   // プチ改善フラグの付け外し。付けると通常一覧から外れ、プチ改善ビューへ集約される。
+  // 移動時は priority をそのまま持ち込むが、既存のプチ改善タスクと同値だと並び替えできない
+  // スロットになるため、衝突したときだけプチ改善ビューの末尾に置き直す。
   const handleTogglePetit = useCallback(async (project: Project) => {
-    await supabase
-      .from("projects")
-      .update({ is_petit_improvement: !project.is_petit_improvement } as never)
-      .eq("id", project.id);
+    const turningOn = !project.is_petit_improvement;
+    const patch: { is_petit_improvement: boolean; priority?: number } = {
+      is_petit_improvement: turningOn,
+    };
+    if (turningOn) {
+      const used = projects
+        .filter((p) => p.is_petit_improvement && p.status !== "完了" && p.id !== project.id)
+        .map((p) => p.priority);
+      if (used.includes(project.priority)) {
+        patch.priority = Math.max(...used, project.priority) + 1;
+      }
+    }
+    await supabase.from("projects").update(patch as never).eq("id", project.id);
     await reload();
-  }, [supabase, reload]);
+  }, [supabase, reload, projects]);
 
   // プチ改善ビューのD&D完了時：並び順を priority に反映して保存。
   // メイン一覧とは独立させるため、プチ改善施策が元々持つ priority 値を昇順スロットとして
@@ -1225,7 +1261,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     const [moved] = items.splice(oldIndex, 1);
     items.splice(newIndex, 0, moved);
 
-    const slots = petitProjects.map((p) => p.priority).sort((a, b) => a - b);
+    const slots = ascendingSlots(petitProjects.map((p) => p.priority));
     const reordered = items.map((p, i) => ({ ...p, priority: slots[i] }));
 
     // 楽観的更新
