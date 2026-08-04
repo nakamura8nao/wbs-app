@@ -430,33 +430,113 @@ function InlineDateCell({
   );
 }
 
-// 公開目安のピン留めトグル。事業部等により期日が確定しており「絶対に動かせない期日」であることを示す。
-// 重要度（優先度）とは独立した軸。未ピンは通常の「目安」でニュートラル、クリックで赤いピンに切り替わる。
-function UrgentToggle({
-  urgent,
-  onToggle,
+// 公開マスト期日のインライン編集。事業部等により期日が確定しており「絶対に動かせない日」を持つ。
+// 公開目安（target_date）とは別の日付として扱う軸で、重要度（優先度）とも独立。
+// 期日が入っていること自体が「動かせない」印なので、旧 is_urgent フラグは廃止しこの日付に統合した。
+// 未設定のときは行ホバーで薄いピンだけを出し、行の高さを増やさない。
+function MustDateCell({
+  value,
+  onChange,
 }: {
-  urgent: boolean;
-  onToggle: (next: boolean) => void;
+  value: string | null;
+  onChange: (value: string | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState<string | null>(value);
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      setDraftValue(value);
+    } else if (draftValue !== value) {
+      onChange(draftValue);
+    }
+    setOpen(next);
+  };
+
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle(!urgent);
-      }}
-      aria-pressed={urgent}
-      data-tooltip={urgent ? "絶対に動かせない期日：事業部等により期日が確定しており、後ろ倒しできない。クリックで解除。" : "クリックで「絶対に動かせない期日」としてピン留め。事業部等により期日が確定していることを示す（未ピンは通常の目安）。"}
-      className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors cursor-pointer",
-        urgent
-          ? "text-red-500 hover:text-red-600"
-          : "text-slate-300 hover:text-slate-400"
-      )}
-    >
-      <Pin size={15} fill={urgent ? "currentColor" : "none"} />
-    </button>
+    <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
+      <Menu.Trigger
+        onClick={(e) => e.stopPropagation()}
+        data-tooltip={value
+          ? "公開マスト期日：事業部等により期日が確定しており、後ろ倒しできない日。クリックで変更・クリア。"
+          : "クリックで「公開マスト期日」（絶対に動かせない日）を設定。公開目安とは別日で持てる。"}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 -mx-1 outline-none cursor-pointer transition-colors",
+          value
+            ? "text-red-500 hover:text-red-600"
+            : "text-slate-300 opacity-0 transition-opacity hover:text-slate-500 group-hover:opacity-100"
+        )}
+      >
+        <Pin size={13} fill={value ? "currentColor" : "none"} className="shrink-0" />
+        {value && <span className="text-xs font-medium">{value}</span>}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
+          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")}>
+            <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+              <span className="text-xs font-medium text-slate-500">公開マスト期日</span>
+              <input
+                type="date"
+                value={draftValue ?? ""}
+                onChange={(e) => setDraftValue(e.target.value || null)}
+                className="h-8 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-[#4a9eff]"
+              />
+              <div className="flex items-center justify-between">
+                {draftValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setDraftValue(null)}
+                    className="text-left text-xs text-slate-500 hover:text-red-500"
+                  >
+                    クリア
+                  </button>
+                ) : <span />}
+                <button
+                  type="button"
+                  onClick={() => handleOpenChange(false)}
+                  className="rounded-md bg-primary-500 px-3 py-1 text-xs font-medium text-white hover:bg-primary-400 cursor-pointer"
+                >
+                  適用
+                </button>
+              </div>
+            </div>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
+// 公開目安（上段）と公開マスト期日（下段）を1セルにまとめたセル。
+// マスト期日が未設定の行は上段だけになるので、一覧の行高は今までと変わらない。
+function ReleaseDateCell({
+  project,
+  onUpdateField,
+}: {
+  project: Project;
+  onUpdateField: (id: string, patch: Partial<Project>) => void;
+}) {
+  const mustDateCell = (
+    <MustDateCell
+      value={project.must_date}
+      onChange={(v) => onUpdateField(project.id, { must_date: v })}
+    />
+  );
+
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="flex items-center gap-1">
+        <span className="min-w-0 flex-1">
+          <InlineDateCell
+            value={project.target_date}
+            tentative={project.target_date_tentative}
+            onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
+          />
+        </span>
+        {!project.must_date && mustDateCell}
+      </span>
+      {project.must_date && mustDateCell}
+    </span>
   );
 }
 
@@ -574,17 +654,7 @@ const SortableRow = memo(function SortableRow({
         </span>
       </td>
       <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <span className="flex items-center gap-1.5">
-          <UrgentToggle
-            urgent={project.is_urgent}
-            onToggle={(next) => onUpdateField(project.id, { is_urgent: next })}
-          />
-          <InlineDateCell
-            value={project.target_date}
-            tentative={project.target_date_tentative}
-            onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
-          />
-        </span>
+        <ReleaseDateCell project={project} onUpdateField={onUpdateField} />
       </td>
       <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
@@ -784,17 +854,7 @@ const ProjectRow = memo(function ProjectRow({
         </span>
       </td>
       <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <span className="flex items-center gap-1.5">
-          <UrgentToggle
-            urgent={project.is_urgent}
-            onToggle={(next) => onUpdateField(project.id, { is_urgent: next })}
-          />
-          <InlineDateCell
-            value={project.target_date}
-            tentative={project.target_date_tentative}
-            onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
-          />
-        </span>
+        <ReleaseDateCell project={project} onUpdateField={onUpdateField} />
       </td>
       <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
         <InlineMenuCell
@@ -1115,6 +1175,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       priority_undecided: false,
       target_date: formData.target_date || null,
       target_date_tentative: formData.target_date_tentative,
+      must_date: formData.must_date || null,
       is_petit_improvement: formData.is_petit_improvement,
       director_id: formData.director_id || null,
       engineer_id: formData.engineer_id || null,
@@ -1143,6 +1204,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         priority: formData.priority,
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
+        must_date: formData.must_date || null,
         is_petit_improvement: formData.is_petit_improvement,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
@@ -1175,7 +1237,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       priority_undecided: true,
       target_date: project.target_date,
       target_date_tentative: project.target_date_tentative,
-      is_urgent: project.is_urgent,
+      must_date: project.must_date,
       is_petit_improvement: project.is_petit_improvement,
       director_id: project.director_id,
       engineer_id: project.engineer_id,
@@ -1363,10 +1425,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
             className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
             title="公開目安日で並び替え（昇順→降順→優先度順）"
           >
-            公開目安
-            {sortKey === "target_date"
-              ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-              : <ArrowUpDown size={12} className="opacity-40" />}
+            <span className="flex flex-col items-start leading-tight">
+              <span className="flex items-center gap-1">
+                公開目安
+                {sortKey === "target_date"
+                  ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+                  : <ArrowUpDown size={12} className="opacity-40" />}
+              </span>
+              <span className="flex items-center gap-0.5 text-[10px] font-normal text-red-400">
+                <Pin size={9} fill="currentColor" />
+                ＝動かせない日
+              </span>
+            </span>
           </button>
         </th>
         <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Dir</th>
