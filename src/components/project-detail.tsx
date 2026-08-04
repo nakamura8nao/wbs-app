@@ -68,6 +68,7 @@ export function ProjectDetail({
         priority: formData.priority,
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
+        must_date: formData.must_date || null,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
         designer_id: formData.designer_id || null,
@@ -131,11 +132,16 @@ export function ProjectDetail({
         <div className="grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-4">
           <InfoItem label="事業" value={[project.group_lv2, project.group_lv3].filter(Boolean).join(" / ") || project.group_lv1 || "-"} />
           <InfoItem label="起案日" value={project.proposed_date ?? "-"} />
-          <InfoItem label="目標日" value={
+          <InfoItem label="公開目安" value={
             project.target_date
               ? project.target_date_tentative ? `${project.target_date} (仮)` : project.target_date
               : "-"
           } />
+          <InfoItem
+            label="公開マスト期日"
+            value={project.must_date ?? "-"}
+            valueClassName={project.must_date ? "text-red-600" : undefined}
+          />
           <InfoItem label="規模" value={sizeLabel(project.size)} />
           <InfoItem label="優先度" value={project.priority_undecided ? "未決定" : `${project.priority}`} />
           <InfoItem label="ディレクター" value={project.director?.display_name ?? "-"} />
@@ -187,11 +193,19 @@ export function ProjectDetail({
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
+function InfoItem({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div>
       <span className="text-xs text-black/40 block mb-1">{label}</span>
-      <span className="text-[15px] text-black/80">{value}</span>
+      <span className={cn("text-[15px] text-black/80", valueClassName)}>{value}</span>
     </div>
   );
 }

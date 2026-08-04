@@ -62,7 +62,7 @@ export type Database = {
           priority_undecided: boolean;
           target_date: string | null;
           target_date_tentative: boolean;
-          is_urgent: boolean;
+          must_date: string | null;
           is_petit_improvement: boolean;
           director_id: string | null;
           engineer_id: string | null;
@@ -89,7 +89,7 @@ export type Database = {
           priority_undecided?: boolean;
           target_date?: string | null;
           target_date_tentative?: boolean;
-          is_urgent?: boolean;
+          must_date?: string | null;
           is_petit_improvement?: boolean;
           director_id?: string | null;
           engineer_id?: string | null;
@@ -114,7 +114,7 @@ export type Database = {
           priority_undecided?: boolean;
           target_date?: string | null;
           target_date_tentative?: boolean;
-          is_urgent?: boolean;
+          must_date?: string | null;
           is_petit_improvement?: boolean;
           director_id?: string | null;
           engineer_id?: string | null;

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon } from "@/components/group-icon";
-import { ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeft, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SnapshotData = {
@@ -70,7 +70,7 @@ export function SnapshotView({ snapshot }: { snapshot: SnapshotData }) {
               <th className="w-10 px-2 py-2 text-center">#</th>
               <th className="w-24 px-2 py-2">事業</th>
               <th className="px-2 py-2">タイトル</th>
-              <th className="w-28 px-2 py-2">公開目安</th>
+              <th className="w-36 px-2 py-2">公開目安</th>
               <th className="w-20 px-2 py-2">Dir</th>
               <th className="w-20 px-2 py-2">Des</th>
               <th className="w-20 px-2 py-2">Eng</th>
@@ -111,12 +111,22 @@ export function SnapshotView({ snapshot }: { snapshot: SnapshotData }) {
                         {project.title}
                       </span>
                     </td>
-                    <td className="w-28 px-2 py-2 text-sm text-foreground">
-                      {project.target_date ? (
-                        project.target_date_tentative
-                          ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
-                          : project.target_date
-                      ) : "-"}
+                    <td className="w-36 px-2 py-2 text-sm text-foreground">
+                      <span className="flex flex-col gap-0.5">
+                        <span>
+                          {project.target_date ? (
+                            project.target_date_tentative
+                              ? <span className="text-xs text-black/40">{project.target_date} 仮</span>
+                              : project.target_date
+                          ) : "-"}
+                        </span>
+                        {project.must_date && (
+                          <span className="flex items-center gap-1 text-red-500" title="公開マスト期日（絶対に動かせない日）">
+                            <Pin size={11} fill="currentColor" className="shrink-0" />
+                            <span className="text-xs font-medium">{project.must_date}</span>
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="w-20 px-2 py-2 text-sm text-foreground">
                       {project.director?.display_name ?? "-"}

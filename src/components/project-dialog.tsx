@@ -41,6 +41,7 @@ const EMPTY_FORM: ProjectFormData = {
   priority: 0,
   target_date: "",
   target_date_tentative: false,
+  must_date: "",
   is_petit_improvement: false,
   director_id: "",
   engineer_id: "",
@@ -137,6 +138,7 @@ export function ProjectDialog({
         priority: defaultValues.priority,
         target_date: defaultValues.target_date ?? "",
         target_date_tentative: defaultValues.target_date_tentative ?? false,
+        must_date: defaultValues.must_date ?? "",
         is_petit_improvement: defaultValues.is_petit_improvement ?? false,
         director_id: defaultValues.director_id ?? "",
         engineer_id: defaultValues.engineer_id ?? "",
@@ -291,6 +293,18 @@ export function ProjectDialog({
                 </div>
               </FormField>
             </div>
+
+            <FormField
+              label="公開マスト期日"
+              tooltip="事業部等により確定していて絶対に動かせない公開日。公開目安（社内の見込み）とは別日で持てる。未設定なら「動かせない日はない」の扱い。"
+            >
+              <Input
+                type="date"
+                value={form.must_date}
+                onChange={(e) => update("must_date", e.target.value)}
+                className="w-48"
+              />
+            </FormField>
           </FormSection>
 
           {/* 担当者 */}
