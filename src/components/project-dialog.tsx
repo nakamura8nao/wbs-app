@@ -43,6 +43,7 @@ const EMPTY_FORM: ProjectFormData = {
   target_date_tentative: false,
   must_date: "",
   is_petit_improvement: false,
+  is_ab_test: false,
   director_id: "",
   engineer_id: "",
   designer_id: "",
@@ -140,6 +141,7 @@ export function ProjectDialog({
         target_date_tentative: defaultValues.target_date_tentative ?? false,
         must_date: defaultValues.must_date ?? "",
         is_petit_improvement: defaultValues.is_petit_improvement ?? false,
+        is_ab_test: defaultValues.is_ab_test ?? false,
         director_id: defaultValues.director_id ?? "",
         engineer_id: defaultValues.engineer_id ?? "",
         designer_id: defaultValues.designer_id ?? "",
@@ -364,27 +366,52 @@ export function ProjectDialog({
             </div>
           </FormSection>
 
-          {/* プチ改善 */}
-          <FormSection title="プチ改善">
-            <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
-              <input
-                type="checkbox"
-                checked={form.is_petit_improvement}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    is_petit_improvement: e.target.checked,
-                  }))
-                }
-                className="mt-0.5 h-4 w-4 cursor-pointer"
-              />
-              <span className="text-sm leading-snug">
-                <span className="font-medium text-slate-700">プチ改善タスクにする</span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  オンにすると通常の一覧から外れ、「プチ改善」ビューに集約されます（メイン開発の裏で少しずつ消化する小さな改善）。
+          {/* プチ改善 / ABテスト（どちらも通常一覧から外れるため排他） */}
+          <FormSection title="専用ビューへ集約">
+            <div className="space-y-2">
+              <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={form.is_petit_improvement}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      is_petit_improvement: e.target.checked,
+                      // 排他: プチ改善をオンにしたらABテストは下ろす
+                      is_ab_test: e.target.checked ? false : prev.is_ab_test,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 cursor-pointer"
+                />
+                <span className="text-sm leading-snug">
+                  <span className="font-medium text-slate-700">プチ改善タスクにする</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    オンにすると通常の一覧から外れ、「プチ改善」ビューに集約されます（メイン開発の裏で少しずつ消化する小さな改善）。
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={form.is_ab_test}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      is_ab_test: e.target.checked,
+                      // 排他: ABテストをオンにしたらプチ改善は下ろす
+                      is_petit_improvement: e.target.checked ? false : prev.is_petit_improvement,
+                    }))
+                  }
+                  className="mt-0.5 h-4 w-4 cursor-pointer"
+                />
+                <span className="text-sm leading-snug">
+                  <span className="font-medium text-slate-700">ABテスト施策にする</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    オンにすると通常の一覧から外れ、「ABテスト」ビューに集約されます（リリース前にABテストで効果を検証する施策）。
+                  </span>
+                </span>
+              </label>
+            </div>
           </FormSection>
 
           {/* 備考 */}
