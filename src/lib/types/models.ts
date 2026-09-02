@@ -22,6 +22,7 @@ export type Project = {
   target_date_tentative: boolean;
   must_date: string | null;
   is_petit_improvement: boolean;
+  is_ab_test: boolean;
   director_id: string | null;
   engineer_id: string | null;
   designer_id: string | null;
@@ -85,6 +86,7 @@ export type ProjectFormData = {
   target_date_tentative: boolean;
   must_date: string;
   is_petit_improvement: boolean;
+  is_ab_test: boolean;
   director_id: string;
   engineer_id: string;
   designer_id: string;
