@@ -50,6 +50,12 @@ export default async function ProjectPage({
     notFound();
   }
 
+  const { data: investmentPrograms } = await supabase
+    .from("investment_programs")
+    .select("*")
+    .order("sort_order")
+    .order("created_at");
+
   const { data: members } = await supabase
     .from("members")
     .select("*")
@@ -62,6 +68,7 @@ export default async function ProjectPage({
         <ProjectDetail
           project={project}
           members={members ?? []}
+          investmentPrograms={investmentPrograms ?? []}
         />
       </main>
     </div>

@@ -26,6 +26,12 @@ export default async function Home() {
     .select("project_id, assignee_id")
     .not("assignee_id", "is", null);
 
+  const { data: investmentPrograms } = await supabase
+    .from("investment_programs")
+    .select("*")
+    .order("sort_order")
+    .order("created_at");
+
   const { data: members } = await supabase
     .from("members")
     .select("*")
@@ -38,6 +44,7 @@ export default async function Home() {
         <ProjectList
           initialProjects={projects ?? []}
           initialPhaseAssignees={(phaseAssignees ?? []) as { project_id: string; assignee_id: string }[]}
+          initialInvestmentPrograms={investmentPrograms ?? []}
           members={members ?? []}
         />
       </main>

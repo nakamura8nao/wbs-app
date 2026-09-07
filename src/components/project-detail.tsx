@@ -9,8 +9,8 @@ import { PhasePanel } from "@/components/phase-panel";
 import { ProjectDialog } from "@/components/project-dialog";
 import { NotesContent } from "@/components/notes-content";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { SIZE_OPTIONS } from "@/lib/constants";
-import type { Project, Member, ProjectFormData } from "@/lib/types/models";
+import { SIZE_OPTIONS, trackLabel } from "@/lib/constants";
+import type { Project, Member, ProjectFormData, InvestmentProgram } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 
 const sizeLabel = (value: string | null) => {
@@ -42,9 +42,11 @@ const statusConfig = (status: string) => {
 export function ProjectDetail({
   project: initialProject,
   members,
+  investmentPrograms,
 }: {
   project: Project;
   members: Member[];
+  investmentPrograms: InvestmentProgram[];
 }) {
   const [project, setProject] = useState(initialProject);
   const [copied, setCopied] = useState(false);
@@ -69,6 +71,8 @@ export function ProjectDetail({
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
         must_date: formData.must_date || null,
+        track: formData.track,
+        investment_program_id: formData.track === "investment" ? (formData.investment_program_id || null) : null,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
         designer_id: formData.designer_id || null,
@@ -130,6 +134,11 @@ export function ProjectDetail({
       <div className="rounded-lg border border-black/8 bg-white px-6 py-5">
         <h3 className="text-xs font-semibold text-black/40 tracking-wide mb-4">施策情報</h3>
         <div className="grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-4">
+          <InfoItem label="分類" value={
+            project.track === "investment"
+              ? `${trackLabel(project.track)} / ${investmentPrograms.find((p) => p.id === project.investment_program_id)?.name ?? "未割当"}`
+              : trackLabel(project.track)
+          } />
           <InfoItem label="事業" value={[project.group_lv2, project.group_lv3].filter(Boolean).join(" / ") || project.group_lv1 || "-"} />
           <InfoItem label="起案日" value={project.proposed_date ?? "-"} />
           <InfoItem label="公開目安" value={
@@ -186,6 +195,7 @@ export function ProjectDetail({
         onOpenChange={setEditing}
         onSubmit={handleUpdate}
         members={members}
+        investmentPrograms={investmentPrograms}
         title="施策を編集"
         defaultValues={project}
       />
