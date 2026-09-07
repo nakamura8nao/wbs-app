@@ -7,13 +7,14 @@ import { ProgressIcon } from "@/components/progress-icon";
 import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles, FlaskConical, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Lightbulb, Target, CalendarClock, Plus } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS } from "@/lib/constants";
-import type { ApprovalState } from "@/lib/constants";
-import type { Project, Member, ProjectFormData } from "@/lib/types/models";
+import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
+import type { ApprovalState, Track } from "@/lib/constants";
+import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
+import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
 import {
   DndContext,
   closestCenter,
@@ -37,10 +38,12 @@ type PhaseAssigneeRow = { project_id: string; assignee_id: string };
 type Props = {
   initialProjects: Project[];
   initialPhaseAssignees: PhaseAssigneeRow[];
+  initialInvestmentPrograms: InvestmentProgram[];
   members: Member[];
 };
 
-type ViewMode = "priority" | "group" | "engineer" | "gantt" | "released" | "petit" | "ab";
+// investment / improvement / idea は施策の3分類（MECE）ビュー。既存ビューはそのまま残す。
+type ViewMode = "investment" | "improvement" | "idea" | "priority" | "group" | "engineer" | "gantt" | "released" | "petit" | "ab";
 
 const sizeLabel = (value: string | null) => {
   if (!value) return "-";
@@ -833,6 +836,15 @@ const ProjectRow = memo(function ProjectRow({
     setMenuOpen(true);
   }, []);
 
+  // 展開パネルを表で全幅に伸ばすための列数。表示条件付きの列を足し引きして数える。
+  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 進行 / 備考 / ケバブ = 9
+  const colCount =
+    9 +
+    (sortable ? 1 : 0) +
+    (hidePriority ? 0 : 1) +
+    (hideSize ? 0 : 1) +
+    (showProposedDate ? 2 : 0);
+
   return (
     <>
     <tr
@@ -990,7 +1002,7 @@ const ProjectRow = memo(function ProjectRow({
     />
     {isExpanded && (
       <tr>
-        <td colSpan={sortable ? 10 : 9} className="p-0">
+        <td colSpan={colCount} className="p-0">
           <PhasePanel projectId={project.id} project={project} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
         </td>
       </tr>
@@ -1024,9 +1036,10 @@ const SortableProjectRow = memo(function SortableProjectRow(
   );
 });
 
-export function ProjectList({ initialProjects, initialPhaseAssignees, members }: Props) {
+export function ProjectList({ initialProjects, initialPhaseAssignees, initialInvestmentPrograms, members }: Props) {
   const [projects, setProjects] = useState(initialProjects);
   const [phaseAssignees, setPhaseAssignees] = useState(initialPhaseAssignees);
+  const [investmentPrograms, setInvestmentPrograms] = useState(initialInvestmentPrograms);
 
   const phaseAssigneesByProjectId = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -1044,6 +1057,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   const [viewMode, setViewMode] = useState<ViewMode>("priority");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [programDialogOpen, setProgramDialogOpen] = useState(false);
+  const [editingProgram, setEditingProgram] = useState<InvestmentProgram | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
@@ -1142,6 +1157,38 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     [projects, filterProject]
   );
 
+  // 3分類（投資/改善/アイデア）ビュー。
+  // MECE の対象は「通常の一覧に載る未完了の施策」= activeProjects と同じ母集団にそろえる。
+  //   - 完了（公開済み）は既存どおり「公開済み」ビューへ卒業させる
+  //   - プチ改善／ABテストは既存どおり専用ビューに集約したまま（どのタブにも二重表示しない）
+  // これで各施策はこの3タブのうち高々1つにしか現れない。
+  const trackProjects = useMemo(() => {
+    const map = new Map<Track, Project[]>(TRACK_OPTIONS.map((t) => [t.value, [] as Project[]]));
+    for (const p of activeProjects) {
+      (map.get(p.track as Track) ?? map.get("improvement")!).push(p);
+    }
+    // D&Dの並び替えスロット計算が priority 昇順を前提にするので、ここでそろえる
+    for (const list of map.values()) list.sort((a, b) => a.priority - b.priority);
+    return map;
+  }, [activeProjects]);
+
+  const investmentProjects = useMemo(() => trackProjects.get("investment") ?? [], [trackProjects]);
+  const improvementProjects = useMemo(() => trackProjects.get("improvement") ?? [], [trackProjects]);
+  const ideaProjects = useMemo(() => trackProjects.get("idea") ?? [], [trackProjects]);
+
+  // 投資ビュー：塊（プロジェクト）ごとに施策をぶら下げる。塊が空でもカードは出す
+  // （成功条件と期日を置く器なので、施策0件でも見えていた方がよい）。
+  const investmentGroups = useMemo(() => {
+    const groups = investmentPrograms.map((program) => ({ program, items: [] as Project[] }));
+    const unassigned: Project[] = [];
+    for (const p of investmentProjects) {
+      const group = groups.find((g) => g.program.id === p.investment_program_id);
+      if (group) group.items.push(p);
+      else unassigned.push(p);
+    }
+    return { groups, unassigned };
+  }, [investmentPrograms, investmentProjects]);
+
   // エンジニア別グルーピング（施策の engineer で分類、未割当は末尾）
   // 各グループ内は activeProjects の順（=優先度順）を維持
   const engineerGroups = useMemo(() => {
@@ -1194,6 +1241,53 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
     if (data) setProjects(data);
   }, [supabase, reloadPhaseAssignees]);
 
+  const reloadInvestmentPrograms = useCallback(async () => {
+    const { data } = await supabase
+      .from("investment_programs")
+      .select("*")
+      .order("sort_order")
+      .order("created_at");
+    if (data) setInvestmentPrograms(data as InvestmentProgram[]);
+  }, [supabase]);
+
+  const handleCreateProgram = async (formData: InvestmentProgramFormData) => {
+    const maxSort = investmentPrograms.reduce((max, p) => Math.max(max, p.sort_order), 0);
+    await supabase.from("investment_programs").insert({
+      name: formData.name,
+      goal: formData.goal || null,
+      target_period: formData.target_period || null,
+      sort_order: maxSort + 1,
+    } as never);
+    await reloadInvestmentPrograms();
+    setProgramDialogOpen(false);
+  };
+
+  const handleUpdateProgram = async (formData: InvestmentProgramFormData) => {
+    if (!editingProgram) return;
+    await supabase
+      .from("investment_programs")
+      .update({
+        name: formData.name,
+        goal: formData.goal || null,
+        target_period: formData.target_period || null,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", editingProgram.id);
+    await reloadInvestmentPrograms();
+    setEditingProgram(null);
+  };
+
+  // 塊を消しても配下の施策は消さない（FK は on delete set null なので未割当に落ちる）
+  const handleDeleteProgram = async (program: InvestmentProgram) => {
+    const count = investmentProjects.filter((p) => p.investment_program_id === program.id).length;
+    const message = count > 0
+      ? `「${program.name}」を削除しますか？\n配下の施策${count}件は削除されず「未割当」に移動します。`
+      : `「${program.name}」を削除しますか？`;
+    if (!confirm(message)) return;
+    await supabase.from("investment_programs").delete().eq("id", program.id);
+    await Promise.all([reloadInvestmentPrograms(), reload()]);
+  };
+
   const handleCreate = async (formData: ProjectFormData) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -1238,6 +1332,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       must_date: formData.must_date || null,
       is_petit_improvement: formData.is_petit_improvement,
       is_ab_test: formData.is_ab_test,
+      track: formData.track,
+      investment_program_id: formData.track === "investment" ? (formData.investment_program_id || null) : null,
       director_id: formData.director_id || null,
       engineer_id: formData.engineer_id || null,
       designer_id: formData.designer_id || null,
@@ -1268,6 +1364,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         must_date: formData.must_date || null,
         is_petit_improvement: formData.is_petit_improvement,
         is_ab_test: formData.is_ab_test,
+        track: formData.track,
+        investment_program_id: formData.track === "investment" ? (formData.investment_program_id || null) : null,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
         designer_id: formData.designer_id || null,
@@ -1302,6 +1400,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
       must_date: project.must_date,
       is_petit_improvement: project.is_petit_improvement,
       is_ab_test: project.is_ab_test,
+      track: project.track,
+      investment_program_id: project.investment_program_id,
       director_id: project.director_id,
       engineer_id: project.engineer_id,
       designer_id: project.designer_id,
@@ -1399,6 +1499,10 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
 
   const handlePetitDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, petitProjects);
   const handleAbDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, abProjects);
+  // 3分類ビューの並び替え。母集団はメイン一覧と同じなので、そのビューが持つ priority 値の
+  // 昇順スロットを詰め替える（他トラックの priority には触らない）。
+  const handleImprovementDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, improvementProjects);
+  const handleIdeaDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, ideaProjects);
 
   // D&D完了時：優先順を振り直してDBに保存
   const handleTogglePriority = async (project: Project) => {
@@ -1487,6 +1591,26 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
   // 上にグローバルヘッダー(45px) + ビュー切替バー(約60px) があるので top を 105px に。
   const stickyTh = "sticky top-[105px] z-[12] bg-gray-50";
 
+  // 3分類ビュー（投資/改善/アイデア）の表ヘッダー。
+  // 列順は ProjectRow の td と対応させる（drag → タイトル … 状態 → 進行 → 備考 → メニュー）。
+  // 分類とプロジェクトは行に出さない（タブと塊の見出しで分かるので、行では冗長）。
+  const trackTableHead = ({ drag = false }: { drag?: boolean }) => (
+    <thead>
+      <tr className={theadClasses}>
+        {drag && <th scope="col" className="w-8 py-3 px-2"></th>}
+        <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+        <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+        <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+        <th scope="col" className="w-8 py-3 px-2"></th>
+        <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
+        <th scope="col" className="w-10 py-3 px-2"></th>
+      </tr>
+    </thead>
+  );
+
   // sticky=true で優先度順ビュー（1本の長い表）用にヘッダー追従。
   // グループ表示（Eng別など）は小さい表が積み重なるので sticky を外す。
   const priorityTableHead = (sticky = true) => {
@@ -1554,6 +1678,47 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-5 py-3">
         <div className="flex items-center gap-4">
           <div className="flex gap-0.5 rounded-xl bg-white/8 p-1 backdrop-blur-sm">
+            {/* 3分類タブ（投資 → 改善 → アイデア）。施策は必ずこのどれか1つに入る */}
+            <button
+              onClick={() => setViewMode("investment")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "investment"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+              title="新規投資・構造改革：将来のリターンを狙って大きな工数を投じる施策"
+            >
+              <Rocket size={14} />
+              投資
+            </button>
+            <button
+              onClick={() => setViewMode("improvement")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "improvement"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+              title="継続改善・運用強化：既存機能の価値を高め、日々の成果や業務効率を底上げする施策"
+            >
+              <Repeat size={14} />
+              改善
+            </button>
+            <button
+              onClick={() => setViewMode("idea")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                viewMode === "idea"
+                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
+              )}
+              title="アイデア：実施が未確定の検討案や、将来的な施策の候補"
+            >
+              <Lightbulb size={14} />
+              アイデア
+            </button>
+            <span className="mx-1 my-1.5 w-px bg-white/10" />
             <button
               onClick={() => setViewMode("priority")}
               className={cn(
@@ -1666,6 +1831,224 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         </button>
         </div>
       </div>
+
+      {/* 3分類ビュー：新規投資・構造改革（大きな塊 → 配下の施策） */}
+      {viewMode === "investment" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Rocket size={16} className="text-amber-500" />
+              <h3 className="text-sm font-semibold text-amber-900">新規投資・構造改革</h3>
+              <span className="text-xs text-amber-700">
+                プロジェクト{investmentPrograms.length}件 / 施策{investmentProjects.length}件
+              </span>
+              <span className="text-xs text-amber-700/70">
+                将来のリターン（インパクト）を狙って大きな工数を投じる施策
+              </span>
+              <button
+                onClick={() => setProgramDialogOpen(true)}
+                className="ml-auto flex items-center gap-1 rounded-md border border-amber-300 bg-white/60 px-2 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-white cursor-pointer"
+              >
+                <Plus size={13} />
+                プロジェクトを追加
+              </button>
+            </div>
+            {investmentPrograms.length > INVESTMENT_PROGRAM_SOFT_LIMIT && (
+              <p className="mt-2 text-xs text-amber-800">
+                プロジェクトが{INVESTMENT_PROGRAM_SOFT_LIMIT}個を超えています。塊が細かくなりすぎていないか見直しを。
+              </p>
+            )}
+          </div>
+
+          {investmentPrograms.length === 0 && investmentGroups.unassigned.length === 0 ? (
+            <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 px-4 py-16 text-center text-base text-slate-500">
+              「＋ プロジェクトを追加」で大きな塊を作り、施策の分類を「投資」にすると配下に並びます。
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {investmentGroups.groups.map(({ program, items }) => (
+                <div
+                  key={program.id}
+                  className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
+                >
+                  {/* 塊の見出し。成功条件（目的）と大まかな期日を常に表示する */}
+                  <div className="border-b border-slate-200 bg-gray-50 px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <Rocket size={16} className="mt-1 shrink-0 text-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <h3 className="text-base font-bold text-slate-900">{program.name}</h3>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                            <CalendarClock size={12} />
+                            {program.target_period || "期日未設定"}
+                          </span>
+                          <span className="text-xs text-slate-500">{items.length}件</span>
+                        </div>
+                        <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-slate-600">
+                          <Target size={13} className="mt-0.5 shrink-0 text-emerald-500" />
+                          {program.goal ? (
+                            <span className="whitespace-pre-wrap">{program.goal}</span>
+                          ) : (
+                            <span className="text-slate-400">
+                              成功条件が未記入。「どうなったら成功と言えるか」を編集から入れる
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => setEditingProgram(program)}
+                          className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-gray-200 hover:text-slate-700 cursor-pointer"
+                          title="プロジェクトを編集"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProgram(program)}
+                          className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                          title="プロジェクトを削除（配下の施策は未割当に移動）"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {items.length === 0 ? (
+                    <div className="px-4 py-4 text-sm text-slate-400">
+                      施策なし。施策を編集して分類を「投資」にし、このプロジェクトを選ぶと配下に並びます。
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      {trackTableHead({})}
+                      <tbody className="divide-y divide-slate-100">
+                        {items.map((project) => (
+                          <ProjectRow
+                            key={project.id}
+                            project={project}
+                            isExpanded={expandedProjectId === project.id}
+                            onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                            onEdit={() => setEditingProject(project)}
+                            onDuplicate={() => handleDuplicate(project)}
+                            onDelete={() => handleDelete(project.id)}
+                            onTogglePetit={() => handleTogglePetit(project)}
+                            onToggleAb={() => handleToggleAb(project)}
+                            onUpdateField={handleUpdateField}
+                            onPhasesChange={reloadPhaseAssignees}
+                            hidePriority
+                            hideSize
+                            members={members}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))}
+
+              {/* プロジェクト未割当の投資施策 */}
+              {investmentGroups.unassigned.length > 0 && (
+                <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+                  <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
+                    <h3 className="text-base font-bold text-slate-900">未割当</h3>
+                    <span className="text-xs text-slate-500">{investmentGroups.unassigned.length}件</span>
+                    <span className="text-xs text-slate-400">どのプロジェクトにも紐づいていない投資施策</span>
+                  </div>
+                  <table className="w-full text-sm">
+                    {trackTableHead({})}
+                    <tbody className="divide-y divide-slate-100">
+                      {investmentGroups.unassigned.map((project) => (
+                        <ProjectRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onTogglePetit={() => handleTogglePetit(project)}
+                          onToggleAb={() => handleToggleAb(project)}
+                          onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
+                          hidePriority
+                          hideSize
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3分類ビュー：継続改善・運用強化 / アイデア（どちらもフラットな1本の表） */}
+      {(viewMode === "improvement" || viewMode === "idea") && (() => {
+        const isIdea = viewMode === "idea";
+        const items = isIdea ? ideaProjects : improvementProjects;
+        const option = TRACK_OPTIONS.find((t) => t.value === (isIdea ? "idea" : "improvement"))!;
+        const tone = isIdea
+          ? { border: "border-slate-300", bg: "bg-slate-100", title: "text-slate-800", sub: "text-slate-600", icon: "text-slate-500" }
+          : { border: "border-sky-200", bg: "bg-sky-50", title: "text-sky-900", sub: "text-sky-700", icon: "text-sky-500" };
+        const Icon = isIdea ? Lightbulb : Repeat;
+        return (
+          <div className="space-y-4">
+            <div className={cn("rounded-xl border px-5 py-3", tone.border, tone.bg)}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Icon size={16} className={tone.icon} />
+                <h3 className={cn("text-sm font-semibold", tone.title)}>{option.label}</h3>
+                <span className={cn("text-xs", tone.sub)}>{items.length}件</span>
+                <span className={cn("text-xs opacity-70", tone.sub)}>{option.description}</span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+              <table className="w-full text-sm">
+                {trackTableHead({ drag: true })}
+                {items.length === 0 ? (
+                  <tbody>
+                    <tr>
+                      <td colSpan={10} className="py-16 text-center text-base text-slate-500">
+                        該当する施策はありません。施策を編集して分類を変えるとこのタブに入ります。
+                      </td>
+                    </tr>
+                  </tbody>
+                ) : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={isIdea ? handleIdeaDragEnd : handleImprovementDragEnd}
+                  >
+                    <SortableContext items={items.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                      <tbody className="divide-y divide-slate-100">
+                        {items.map((project) => (
+                          <SortableProjectRow
+                            key={project.id}
+                            project={project}
+                            isExpanded={expandedProjectId === project.id}
+                            onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                            onEdit={() => setEditingProject(project)}
+                            onDuplicate={() => handleDuplicate(project)}
+                            onDelete={() => handleDelete(project.id)}
+                            onTogglePetit={() => handleTogglePetit(project)}
+                            onToggleAb={() => handleToggleAb(project)}
+                            onUpdateField={handleUpdateField}
+                            onPhasesChange={reloadPhaseAssignees}
+                            hidePriority
+                            hideSize
+                            members={members}
+                          />
+                        ))}
+                      </tbody>
+                    </SortableContext>
+                  </DndContext>
+                )}
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 優先度順ビュー（D&D対応） */}
       {viewMode === "priority" && (
@@ -2120,6 +2503,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         onOpenChange={setDialogOpen}
         onSubmit={handleCreate}
         members={members}
+        investmentPrograms={investmentPrograms}
         title="施策を新規作成"
       />
 
@@ -2131,8 +2515,26 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, members }:
         }}
         onSubmit={handleUpdate}
         members={members}
+        investmentPrograms={investmentPrograms}
         title="施策を編集"
         defaultValues={editingProject ?? undefined}
+      />
+
+      {/* 投資プロジェクト（大きな塊）の新規作成 / 編集 */}
+      <InvestmentProgramDialog
+        open={programDialogOpen}
+        onOpenChange={setProgramDialogOpen}
+        onSubmit={handleCreateProgram}
+        title="プロジェクトを新規作成"
+      />
+      <InvestmentProgramDialog
+        open={editingProgram !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingProgram(null);
+        }}
+        onSubmit={handleUpdateProgram}
+        title="プロジェクトを編集"
+        defaultValues={editingProgram ?? undefined}
       />
     </div>
   );

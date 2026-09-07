@@ -19,8 +19,16 @@ import {
   STATUS_OPTIONS,
   PROGRESS_OPTIONS,
   SIZE_OPTIONS,
+  TRACK_OPTIONS,
+  DEFAULT_TRACK,
 } from "@/lib/constants";
-import type { Project, Member, ProjectFormData } from "@/lib/types/models";
+import type { Track } from "@/lib/constants";
+import type {
+  Project,
+  Member,
+  ProjectFormData,
+  InvestmentProgram,
+} from "@/lib/types/models";
 
 type Props = {
   open: boolean;
@@ -29,6 +37,7 @@ type Props = {
   members: Member[];
   title: string;
   defaultValues?: Project;
+  investmentPrograms: InvestmentProgram[];
 };
 
 const todayLocal = () => new Date().toLocaleDateString("sv-SE");
@@ -44,6 +53,8 @@ const EMPTY_FORM: ProjectFormData = {
   must_date: "",
   is_petit_improvement: false,
   is_ab_test: false,
+  track: DEFAULT_TRACK,
+  investment_program_id: "",
   director_id: "",
   engineer_id: "",
   designer_id: "",
@@ -125,6 +136,7 @@ export function ProjectDialog({
   members,
   title,
   defaultValues,
+  investmentPrograms,
 }: Props) {
   const [form, setForm] = useState<ProjectFormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -142,6 +154,8 @@ export function ProjectDialog({
         must_date: defaultValues.must_date ?? "",
         is_petit_improvement: defaultValues.is_petit_improvement ?? false,
         is_ab_test: defaultValues.is_ab_test ?? false,
+        track: defaultValues.track ?? DEFAULT_TRACK,
+        investment_program_id: defaultValues.investment_program_id ?? "",
         director_id: defaultValues.director_id ?? "",
         engineer_id: defaultValues.engineer_id ?? "",
         designer_id: defaultValues.designer_id ?? "",
@@ -175,6 +189,10 @@ export function ProjectDialog({
       if (field === "group_lv2") {
         next.group_lv3 = "";
       }
+      // 投資トラック以外にしたら、投資ビューの塊への割当は外す
+      if (field === "track" && value !== "investment") {
+        next.investment_program_id = "";
+      }
       return next;
     });
   };
@@ -188,6 +206,14 @@ export function ProjectDialog({
     value: p.value,
     label: `${p.label} ${p.value}`,
   }));
+  const trackOptions = TRACK_OPTIONS.map((t) => ({
+    value: t.value,
+    label: t.label,
+  }));
+  const investmentProgramOptions = [
+    { value: "", label: "未割当" },
+    ...investmentPrograms.map((p) => ({ value: p.id, label: p.name })),
+  ];
   const groupLv1Options = [
     { value: "", label: "選択してください" },
     ...GROUP_LV1_OPTIONS.map((g) => ({ value: g, label: g })),
@@ -214,6 +240,38 @@ export function ProjectDialog({
           <DialogTitle className="text-lg">{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 pt-2">
+          {/* 分類（投資 / 改善 / アイデア）。施策は必ずどれか1つに属する */}
+          <FormSection title="分類">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                label="トラック"
+                required
+                tooltip="施策は必ず1つに属する（MECE）。投資=将来のリターンを狙って大きな工数を投じる / 改善=既存機能の価値と業務効率の底上げ / アイデア=実施が未確定の検討案"
+              >
+                <NativeSelect
+                  value={form.track}
+                  onChange={(v) => update("track", v as Track)}
+                  options={trackOptions}
+                />
+              </FormField>
+              {form.track === "investment" && (
+                <FormField
+                  label="プロジェクト"
+                  tooltip="投資ビューでどの大きな塊の下に並べるか。未割当のままでも「未割当」として表示される。"
+                >
+                  <NativeSelect
+                    value={form.investment_program_id}
+                    onChange={(v) => update("investment_program_id", v)}
+                    options={investmentProgramOptions}
+                  />
+                </FormField>
+              )}
+            </div>
+            <p className="text-xs leading-relaxed text-slate-500">
+              {TRACK_OPTIONS.find((t) => t.value === form.track)?.description}
+            </p>
+          </FormSection>
+
           {/* 基本情報 */}
           <FormSection title="基本情報">
             <FormField label="タイトル" required>

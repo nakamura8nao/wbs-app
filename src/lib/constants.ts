@@ -73,6 +73,43 @@ export const SIZE_OPTIONS = [
   { value: "480", label: "480pt (3か月)" },
 ] as const;
 
+// 施策の3分類（トラック）。施策は必ずこのどれか1つに属する（MECE）。
+// 投資 = 将来のリターンを狙って大きな工数を投じる / 改善 = 既存機能の価値と業務効率の底上げ /
+// アイデア = 実施が未確定の検討案。short はタブなどの狭い場所での略称。
+export const TRACK_OPTIONS = [
+  {
+    value: "investment",
+    label: "新規投資・構造改革",
+    short: "投資",
+    description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策",
+  },
+  {
+    value: "improvement",
+    label: "継続改善・運用強化",
+    short: "改善",
+    description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策",
+  },
+  {
+    value: "idea",
+    label: "アイデア",
+    short: "アイデア",
+    description: "実施が未確定の検討案や、将来的な施策の候補",
+  },
+] as const;
+
+export const DEFAULT_TRACK = "improvement";
+
+// 投資ビューの大きな塊は「多くても10個以下」で運用する。超えたら畳む方向に見直す合図。
+export const INVESTMENT_PROGRAM_SOFT_LIMIT = 10;
+
+export function trackLabel(value: string) {
+  return TRACK_OPTIONS.find((t) => t.value === value)?.label ?? value;
+}
+
+export function trackShortLabel(value: string) {
+  return TRACK_OPTIONS.find((t) => t.value === value)?.short ?? value;
+}
+
 // 須川さんチェック（承認）の3状態
 export const APPROVAL_STATES = ["pending", "approved", "skipped"] as const;
 
@@ -96,3 +133,4 @@ export type PhaseStatus = (typeof PHASE_STATUS_OPTIONS)[number];
 export type MemberRole = (typeof MEMBER_ROLE_OPTIONS)[number];
 export type Size = (typeof SIZE_OPTIONS)[number]["value"];
 export type ApprovalState = (typeof APPROVAL_STATES)[number];
+export type Track = (typeof TRACK_OPTIONS)[number]["value"];

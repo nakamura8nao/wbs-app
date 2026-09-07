@@ -50,6 +50,34 @@ export type Database = {
         };
         Relationships: [];
       };
+      investment_programs: {
+        Row: {
+          id: string;
+          name: string;
+          goal: string | null;
+          target_period: string | null;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          goal?: string | null;
+          target_period?: string | null;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          goal?: string | null;
+          target_period?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       projects: {
         Row: {
           id: string;
@@ -65,6 +93,8 @@ export type Database = {
           must_date: string | null;
           is_petit_improvement: boolean;
           is_ab_test: boolean;
+          track: string;
+          investment_program_id: string | null;
           director_id: string | null;
           engineer_id: string | null;
           designer_id: string | null;
@@ -93,6 +123,8 @@ export type Database = {
           must_date?: string | null;
           is_petit_improvement?: boolean;
           is_ab_test?: boolean;
+          track?: string;
+          investment_program_id?: string | null;
           director_id?: string | null;
           engineer_id?: string | null;
           designer_id?: string | null;
@@ -119,6 +151,8 @@ export type Database = {
           must_date?: string | null;
           is_petit_improvement?: boolean;
           is_ab_test?: boolean;
+          track?: string;
+          investment_program_id?: string | null;
           director_id?: string | null;
           engineer_id?: string | null;
           designer_id?: string | null;
