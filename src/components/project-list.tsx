@@ -1036,6 +1036,45 @@ const SortableProjectRow = memo(function SortableProjectRow(
   );
 });
 
+// 投資ビューの塊（プロジェクト）カードをドラッグ並び替えするためのラッパー。
+// カード内の施策テーブルは別の DndContext を持つので、掴む場所は見出しのハンドルだけに限定する。
+function SortableProgramCard({
+  id,
+  children,
+}: {
+  id: string;
+  children: (dragHandle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  const dragHandle = (
+    <span
+      {...attributes}
+      {...listeners}
+      className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+      title="ドラッグしてプロジェクトを並び替え"
+    >
+      ⠿
+    </span>
+  );
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden",
+        isDragging && "relative z-10 opacity-90"
+      )}
+    >
+      {children(dragHandle)}
+    </div>
+  );
+}
+
 export function ProjectList({ initialProjects, initialPhaseAssignees, initialInvestmentPrograms, members }: Props) {
   const [projects, setProjects] = useState(initialProjects);
   const [phaseAssignees, setPhaseAssignees] = useState(initialPhaseAssignees);
@@ -1504,6 +1543,39 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const handleImprovementDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, improvementProjects);
   const handleIdeaDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, ideaProjects);
 
+  // 投資ビューの塊（プロジェクト）の並び替え。カードの表示順 = sort_order を 1..n で振り直す。
+  const handleProgramDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const items = [...investmentPrograms];
+    const oldIndex = items.findIndex((p) => p.id === active.id);
+    const newIndex = items.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const [moved] = items.splice(oldIndex, 1);
+    items.splice(newIndex, 0, moved);
+    const reordered = items.map((p, i) => ({ ...p, sort_order: i + 1 }));
+
+    // 楽観的更新（カードの並びは investmentPrograms の順で決まる）
+    const previous = investmentPrograms;
+    setInvestmentPrograms(reordered);
+
+    const changed = reordered.filter(
+      (p) => previous.find((o) => o.id === p.id)?.sort_order !== p.sort_order
+    );
+    if (changed.length > 0) {
+      await Promise.all(
+        changed.map((p) =>
+          supabase
+            .from("investment_programs")
+            .update({ sort_order: p.sort_order, updated_at: new Date().toISOString() } as never)
+            .eq("id", p.id)
+        )
+      );
+    }
+  };
+
   // D&D完了時：優先順を振り直してDBに保存
   const handleTogglePriority = async (project: Project) => {
     const newUndecided = !project.priority_undecided;
@@ -1609,6 +1681,43 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         <th scope="col" className="w-10 py-3 px-2"></th>
       </tr>
     </thead>
+  );
+
+  // 投資ビューの施策テーブル。塊カード内と未割当カードで共用する。
+  // 並び替えは塊の中だけで完結させたいので、DndContext はカードごとに独立させ、
+  // 渡された items が持つ priority 値の昇順スロットを詰め替える（他の塊には触らない）。
+  const investmentProjectTable = (items: Project[]) => (
+    <table className="w-full text-sm">
+      {trackTableHead({ drag: true })}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={(event) => handleSubViewDragEnd(event, items)}
+      >
+        <SortableContext items={items.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          <tbody className="divide-y divide-slate-100">
+            {items.map((project) => (
+              <SortableProjectRow
+                key={project.id}
+                project={project}
+                isExpanded={expandedProjectId === project.id}
+                onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                onEdit={() => setEditingProject(project)}
+                onDuplicate={() => handleDuplicate(project)}
+                onDelete={() => handleDelete(project.id)}
+                onTogglePetit={() => handleTogglePetit(project)}
+                onToggleAb={() => handleToggleAb(project)}
+                onUpdateField={handleUpdateField}
+                onPhasesChange={reloadPhaseAssignees}
+                hidePriority
+                hideSize
+                members={members}
+              />
+            ))}
+          </tbody>
+        </SortableContext>
+      </DndContext>
+    </table>
   );
 
   // sticky=true で優先度順ビュー（1本の長い表）用にヘッダー追従。
@@ -1866,86 +1975,81 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
             </div>
           ) : (
             <div className="space-y-6">
-              {investmentGroups.groups.map(({ program, items }) => (
-                <div
-                  key={program.id}
-                  className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
+              {/* 塊（プロジェクト）の並び替え。掴めるのは見出しのハンドルだけで、
+                  施策行の並び替えはカードごとの内側の DndContext が受け持つ。 */}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleProgramDragEnd}
+              >
+                <SortableContext
+                  items={investmentGroups.groups.map((g) => g.program.id)}
+                  strategy={verticalListSortingStrategy}
                 >
-                  {/* 塊の見出し。成功条件（目的）と大まかな期日を常に表示する */}
-                  <div className="border-b border-slate-200 bg-gray-50 px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <Rocket size={16} className="mt-1 shrink-0 text-amber-500" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <h3 className="text-base font-bold text-slate-900">{program.name}</h3>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                            <CalendarClock size={12} />
-                            {program.target_period || "期日未設定"}
-                          </span>
-                          <span className="text-xs text-slate-500">{items.length}件</span>
-                        </div>
-                        <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-slate-600">
-                          <Target size={13} className="mt-0.5 shrink-0 text-emerald-500" />
-                          {program.goal ? (
-                            <span className="whitespace-pre-wrap">{program.goal}</span>
-                          ) : (
-                            <span className="text-slate-400">
-                              成功条件が未記入。「どうなったら成功と言えるか」を編集から入れる
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          onClick={() => setEditingProgram(program)}
-                          className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-gray-200 hover:text-slate-700 cursor-pointer"
-                          title="プロジェクトを編集"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProgram(program)}
-                          className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 cursor-pointer"
-                          title="プロジェクトを削除（配下の施策は未割当に移動）"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
+                  <div className="space-y-6">
+                    {investmentGroups.groups.map(({ program, items }) => (
+                      <SortableProgramCard key={program.id} id={program.id}>
+                        {(dragHandle) => (
+                          <>
+                            {/* 塊の見出し。成功条件（目的）と大まかな期日を常に表示する */}
+                            <div className="border-b border-slate-200 bg-gray-50 px-4 py-3">
+                              <div className="flex items-start gap-2">
+                                <span className="mt-0.5 shrink-0">{dragHandle}</span>
+                                <Rocket size={16} className="mt-1 shrink-0 text-amber-500" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <h3 className="text-base font-bold text-slate-900">{program.name}</h3>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                                      <CalendarClock size={12} />
+                                      {program.target_period || "期日未設定"}
+                                    </span>
+                                    <span className="text-xs text-slate-500">{items.length}件</span>
+                                  </div>
+                                  <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-slate-600">
+                                    <Target size={13} className="mt-0.5 shrink-0 text-emerald-500" />
+                                    {program.goal ? (
+                                      <span className="whitespace-pre-wrap">{program.goal}</span>
+                                    ) : (
+                                      <span className="text-slate-400">
+                                        成功条件が未記入。「どうなったら成功と言えるか」を編集から入れる
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    onClick={() => setEditingProgram(program)}
+                                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-gray-200 hover:text-slate-700 cursor-pointer"
+                                    title="プロジェクトを編集"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProgram(program)}
+                                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 cursor-pointer"
+                                    title="プロジェクトを削除（配下の施策は未割当に移動）"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            {items.length === 0 ? (
+                              <div className="px-4 py-4 text-sm text-slate-400">
+                                施策なし。施策を編集して分類を「投資」にし、このプロジェクトを選ぶと配下に並びます。
+                              </div>
+                            ) : (
+                              investmentProjectTable(items)
+                            )}
+                          </>
+                        )}
+                      </SortableProgramCard>
+                    ))}
                   </div>
-                  {items.length === 0 ? (
-                    <div className="px-4 py-4 text-sm text-slate-400">
-                      施策なし。施策を編集して分類を「投資」にし、このプロジェクトを選ぶと配下に並びます。
-                    </div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      {trackTableHead({})}
-                      <tbody className="divide-y divide-slate-100">
-                        {items.map((project) => (
-                          <ProjectRow
-                            key={project.id}
-                            project={project}
-                            isExpanded={expandedProjectId === project.id}
-                            onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                            onEdit={() => setEditingProject(project)}
-                            onDuplicate={() => handleDuplicate(project)}
-                            onDelete={() => handleDelete(project.id)}
-                            onTogglePetit={() => handleTogglePetit(project)}
-                            onToggleAb={() => handleToggleAb(project)}
-                            onUpdateField={handleUpdateField}
-                            onPhasesChange={reloadPhaseAssignees}
-                            hidePriority
-                            hideSize
-                            members={members}
-                          />
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              ))}
+                </SortableContext>
+              </DndContext>
 
-              {/* プロジェクト未割当の投資施策 */}
+              {/* プロジェクト未割当の投資施策。塊ではないので並び替えの対象外に置く */}
               {investmentGroups.unassigned.length > 0 && (
                 <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
                   <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
@@ -1953,29 +2057,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     <span className="text-xs text-slate-500">{investmentGroups.unassigned.length}件</span>
                     <span className="text-xs text-slate-400">どのプロジェクトにも紐づいていない投資施策</span>
                   </div>
-                  <table className="w-full text-sm">
-                    {trackTableHead({})}
-                    <tbody className="divide-y divide-slate-100">
-                      {investmentGroups.unassigned.map((project) => (
-                        <ProjectRow
-                          key={project.id}
-                          project={project}
-                          isExpanded={expandedProjectId === project.id}
-                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                          onEdit={() => setEditingProject(project)}
-                          onDuplicate={() => handleDuplicate(project)}
-                          onDelete={() => handleDelete(project.id)}
-                          onTogglePetit={() => handleTogglePetit(project)}
-                          onToggleAb={() => handleToggleAb(project)}
-                          onUpdateField={handleUpdateField}
-                          onPhasesChange={reloadPhaseAssignees}
-                          hidePriority
-                          hideSize
-                          members={members}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
+                  {investmentProjectTable(investmentGroups.unassigned)}
                 </div>
               )}
             </div>
