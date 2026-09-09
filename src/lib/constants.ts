@@ -38,6 +38,8 @@ export function getGroupLv3Options(lv2: string) {
   return GROUP_LV3_OPTIONS.filter((o) => o.parent === lv2);
 }
 
+// DB側に projects_status_check（許可値の列挙）があるので、ここを増やすときは
+// supabase/migrations の制約も合わせて更新する（片方だけだと保存が制約違反で落ちる）。
 export const STATUS_OPTIONS = [
   "未着手",
   "調査",
@@ -48,6 +50,17 @@ export const STATUS_OPTIONS = [
   "公開待ち",
   "完了",
 ] as const;
+
+// ABテストタブ限定のステータス。公開して効果を測っている間の状態で、
+// この状態のときは公開目安の欄に「ABテスト中（公開目安日〜）」と出す。
+// 通常のステータス選択肢には入れず、ABテストタブと、その施策を編集するときだけ出す。
+export const AB_TEST_STATUS = "ABテスト中";
+
+export const AB_STATUS_OPTIONS: readonly string[] = [
+  ...STATUS_OPTIONS.filter((s) => s !== "完了"),
+  AB_TEST_STATUS,
+  "完了",
+];
 
 export const PROGRESS_OPTIONS = [
   { value: "paused", label: "⏸️" },
@@ -102,6 +115,49 @@ export const DEFAULT_TRACK = "improvement";
 // 投資ビューの大きな塊は「多くても10個以下」で運用する。超えたら畳む方向に見直す合図。
 export const INVESTMENT_PROGRAM_SOFT_LIMIT = 10;
 
+// 施策の置き場所＝表示タブ。施策は必ずこの5つのどれか1つに属する（MECE）。
+// DB上は投資/改善/アイデアが track 列、プチ改善/ABテストが専用フラグに分かれているが、
+// 運用上は「どのタブに置くか」の1択なので、入力はこの5択にまとめて保存時にマッピングする。
+// （プチ改善の日次集計とスナップショット履歴がフラグを見ているため、列構成はそのまま残す）
+export const PLACEMENT_OPTIONS = [
+  { value: "investment", label: "投資（新規投資・構造改革）", description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策" },
+  { value: "improvement", label: "改善（継続改善・運用強化）", description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
+  { value: "petit", label: "プチ改善", description: "投資・改善施策と並行して進めるサブタスク" },
+  { value: "ab", label: "ABテスト", description: "リリース前にABテストで効果を検証する施策" },
+  { value: "idea", label: "アイデア", description: "実施が未確定の検討案や、将来的な施策の候補" },
+] as const;
+
+type PlacementSource = {
+  track: string;
+  is_petit_improvement: boolean;
+  is_ab_test: boolean;
+};
+
+// 施策の現在値から置き場所を求める。プチ改善／ABテストのフラグが立っていれば
+// そちらが表示タブになる（3分類ビューはフラグ付きを除外しているため）。
+export function placementOf(project: PlacementSource): Placement {
+  if (project.is_ab_test) return "ab";
+  if (project.is_petit_improvement) return "petit";
+  return TRACK_OPTIONS.some((t) => t.value === project.track)
+    ? (project.track as Track)
+    : DEFAULT_TRACK;
+}
+
+// 置き場所から保存する値へ。プチ改善／ABテストのときは track を書き換えず、
+// 元の track（フラグを外したときの戻り先）をそのまま残す。
+export function placementToFields(placement: Placement, currentTrack: Track) {
+  return {
+    track: placement === "petit" || placement === "ab" ? currentTrack : placement,
+    is_petit_improvement: placement === "petit",
+    is_ab_test: placement === "ab",
+  };
+}
+
+export function placementLabel(project: PlacementSource) {
+  const placement = placementOf(project);
+  return PLACEMENT_OPTIONS.find((o) => o.value === placement)?.label ?? placement;
+}
+
 export function trackLabel(value: string) {
   return TRACK_OPTIONS.find((t) => t.value === value)?.label ?? value;
 }
@@ -134,3 +190,4 @@ export type MemberRole = (typeof MEMBER_ROLE_OPTIONS)[number];
 export type Size = (typeof SIZE_OPTIONS)[number]["value"];
 export type ApprovalState = (typeof APPROVAL_STATES)[number];
 export type Track = (typeof TRACK_OPTIONS)[number]["value"];
+export type Placement = (typeof PLACEMENT_OPTIONS)[number]["value"];

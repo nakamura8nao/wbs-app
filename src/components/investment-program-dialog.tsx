@@ -83,6 +83,7 @@ export function InvestmentProgramDialog({
               <span
                 className="ml-1 inline-flex cursor-help text-slate-400"
                 data-tooltip="どんなことが達成されたらこのプロジェクトが成功と言えるか。投資ビューの見出しに常に表示される。"
+                data-tooltip-align="start"
               >
                 ?
               </span>
@@ -101,6 +102,7 @@ export function InvestmentProgramDialog({
               <span
                 className="ml-1 inline-flex cursor-help text-slate-400"
                 data-tooltip="日付まで決めきらないので自由記述。例: 2026年下期 / 2026Q4 / 2026-12"
+                data-tooltip-align="start"
               >
                 ?
               </span>

@@ -9,7 +9,7 @@ import { PhasePanel } from "@/components/phase-panel";
 import { ProjectDialog } from "@/components/project-dialog";
 import { NotesContent } from "@/components/notes-content";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { SIZE_OPTIONS, trackLabel } from "@/lib/constants";
+import { SIZE_OPTIONS, AB_TEST_STATUS, placementOf, placementLabel } from "@/lib/constants";
 import type { Project, Member, ProjectFormData, InvestmentProgram } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,8 @@ const sizeLabel = (value: string | null) => {
 
 const statusConfig = (status: string) => {
   switch (status) {
+    case AB_TEST_STATUS:
+      return { badge: "bg-teal-50 text-teal-700", dot: "bg-teal-500" };
     case "完了":
       return { badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
     case "公開待ち":
@@ -72,6 +74,8 @@ export function ProjectDetail({
         target_date_tentative: formData.target_date_tentative,
         must_date: formData.must_date || null,
         track: formData.track,
+        is_petit_improvement: formData.is_petit_improvement,
+        is_ab_test: formData.is_ab_test,
         investment_program_id: formData.track === "investment" ? (formData.investment_program_id || null) : null,
         director_id: formData.director_id || null,
         engineer_id: formData.engineer_id || null,
@@ -134,10 +138,10 @@ export function ProjectDetail({
       <div className="rounded-lg border border-black/8 bg-white px-6 py-5">
         <h3 className="text-xs font-semibold text-black/40 tracking-wide mb-4">施策情報</h3>
         <div className="grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-4">
-          <InfoItem label="分類" value={
-            project.track === "investment"
-              ? `${trackLabel(project.track)} / ${investmentPrograms.find((p) => p.id === project.investment_program_id)?.name ?? "未割当"}`
-              : trackLabel(project.track)
+          <InfoItem label="置き場所" value={
+            placementOf(project) === "investment"
+              ? `投資 / ${investmentPrograms.find((p) => p.id === project.investment_program_id)?.name ?? "未割当"}`
+              : placementLabel(project)
           } />
           <InfoItem label="事業" value={[project.group_lv2, project.group_lv3].filter(Boolean).join(" / ") || project.group_lv1 || "-"} />
           <InfoItem label="起案日" value={project.proposed_date ?? "-"} />

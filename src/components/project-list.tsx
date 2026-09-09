@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, memo, lazy, Suspense } from "react";
+import { useState, useCallback, useMemo, useRef, memo, Fragment, lazy, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
-import { GroupLv2Icon, GroupLv3Icon } from "@/components/group-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Lightbulb, Target, CalendarClock, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Lightbulb, Target, CalendarClock, Plus, ChartGantt } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS, SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
-import type { ApprovalState, Track } from "@/lib/constants";
+import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
+import type { Track } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
 import {
@@ -42,13 +41,29 @@ type Props = {
   members: Member[];
 };
 
-// investment / improvement / idea は施策の3分類（MECE）ビュー。既存ビューはそのまま残す。
-type ViewMode = "investment" | "improvement" | "idea" | "priority" | "group" | "engineer" | "gantt" | "released" | "petit" | "ab";
+// investment / improvement / idea は施策の3分類（MECE）ビュー。
+// petit / ab は運用上の受け皿、released は公開済みの記録。
+type ViewMode = "investment" | "improvement" | "petit" | "ab" | "released" | "idea";
 
-const sizeLabel = (value: string | null) => {
-  if (!value) return "-";
-  return SIZE_OPTIONS.find((s) => s.value === value)?.label ?? value;
+// タブの並び。「取り組み中の4本 ｜ 公開済み ｜ アイデア」の3ブロックで、
+// ブロックの切れ目に区切り線を入れる。
+type TabDef = {
+  key: ViewMode;
+  label: string;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  title?: string;
 };
+
+const VIEW_TAB_GROUPS: TabDef[][] = [
+  [
+    { key: "investment", label: "投資", icon: Rocket, title: "新規投資・構造改革：将来のリターンを狙って大きな工数を投じる施策" },
+    { key: "improvement", label: "改善", icon: Repeat, title: "継続改善・運用強化：既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
+    { key: "petit", label: "プチ改善", icon: Sparkles, title: "投資・改善施策と並行して進めるサブタスク" },
+    { key: "ab", label: "ABテスト", icon: FlaskConical, title: "リリース前にABテストで効果を検証する施策" },
+  ],
+  [{ key: "released", label: "公開済み", title: "公開（完了）した施策" }],
+  [{ key: "idea", label: "アイデア", icon: Lightbulb, title: "実施が未確定の検討案や、将来的な施策の候補" }],
+];
 
 // 並び替えスロット。同じ priority が複数あると順序を表現できず、D&Dしても同じ値が
 // 書き戻されて行が元に戻ってしまう。昇順に並べたうえで厳密な増加列に補正する（[1,1,1] → [1,2,3]）。
@@ -62,6 +77,8 @@ const ascendingSlots = (values: number[]) => {
 
 const statusConfig = (status: string) => {
   switch (status) {
+    case AB_TEST_STATUS:
+      return { badge: "bg-teal-50 text-teal-700", dot: "bg-teal-500" };
     case "完了":
       return { badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
     case "公開待ち":
@@ -94,8 +111,6 @@ function ProjectActionMenu({
   onEdit,
   onDuplicate,
   onDelete,
-  onTogglePriority,
-  priorityLabel,
   onTogglePetit,
   petitLabel,
   onToggleAb,
@@ -107,8 +122,6 @@ function ProjectActionMenu({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onTogglePriority?: () => void;
-  priorityLabel?: string;
   onTogglePetit?: () => void;
   petitLabel?: string;
   onToggleAb?: () => void;
@@ -127,12 +140,6 @@ function ProjectActionMenu({
               <Copy size={14} />
               複製
             </Menu.Item>
-            {onTogglePriority && (
-              <Menu.Item className={cn(menuItemClasses, "text-amber-600 data-highlighted:text-amber-700")} onClick={onTogglePriority}>
-                <ArrowUpDown size={14} />
-                {priorityLabel}
-              </Menu.Item>
-            )}
             {onTogglePetit && (
               <Menu.Item className={cn(menuItemClasses, "text-violet-600 data-highlighted:text-violet-700")} onClick={onTogglePetit}>
                 <Sparkles size={14} />
@@ -220,82 +227,6 @@ function InlineNotesCell({
   );
 }
 
-// 須川さんチェック（承認）の3状態。クリックで巡回切り替え
-//   pending（青・要対応）→ approved（グレー・完了と同色）→ skipped（濃いグレー）→ pending
-// 未承認は「須川さんチェック待ち」を目立たせるため青。承認後はグレー系に落とす。
-const approvalConfig: Record<ApprovalState, { cls: string; label: string }> = {
-  pending: { cls: "bg-[#4a9eff] text-white", label: "未承認" },
-  approved: { cls: "bg-black/20 text-white", label: "承認済み" },
-  skipped: { cls: "bg-slate-600 text-white", label: "承認不要（事後報告）" },
-};
-
-const nextApprovalState = (s: ApprovalState): ApprovalState =>
-  s === "pending" ? "approved" : s === "approved" ? "skipped" : "pending";
-
-// 色の凡例（ツールチップに添える）
-const approvalLegend = "青=未承認（要対応） / グレー=承認済み / 濃いグレー=承認不要（事後報告）";
-
-function ApprovalToggle({
-  state,
-  onChange,
-  label,
-  gateTitle,
-}: {
-  state: ApprovalState;
-  onChange: (next: ApprovalState) => void;
-  label: string;
-  gateTitle: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={`${gateTitle}｜${approvalLegend}（現在: ${approvalConfig[state].label}）`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onChange(nextApprovalState(state));
-      }}
-      className={cn(
-        "inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold transition-colors cursor-pointer",
-        approvalConfig[state].cls
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-// 承認3ゲートをまとめたセル（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）
-function ApprovalCell({
-  project,
-  onUpdateField,
-}: {
-  project: Project;
-  onUpdateField: (id: string, patch: Partial<Project>) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <ApprovalToggle
-        state={project.wf_approved}
-        onChange={(next) => onUpdateField(project.id, { wf_approved: next })}
-        label="W"
-        gateTitle="WFレビュー（須川さん）"
-      />
-      <ApprovalToggle
-        state={project.design_approved}
-        onChange={(next) => onUpdateField(project.id, { design_approved: next })}
-        label="デ"
-        gateTitle="デザインレビュー（須川さん）"
-      />
-      <ApprovalToggle
-        state={project.release_approved}
-        onChange={(next) => onUpdateField(project.id, { release_approved: next })}
-        label="公"
-        gateTitle="公開前レビュー（須川さん）"
-      />
-    </div>
-  );
-}
-
 // YYYY-MM-DD 同士の日数差（end - start）
 const diffDays = (start: string, end: string): number => {
   const [sy, sm, sd] = start.split("-").map(Number);
@@ -303,11 +234,6 @@ const diffDays = (start: string, end: string): number => {
   const msPerDay = 86400000;
   return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / msPerDay);
 };
-
-const sizeOptionsWithNone = [
-  { value: "", label: <span className="text-slate-400">未設定</span> },
-  ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label as React.ReactNode })),
-];
 
 const progressOptions = PROGRESS_OPTIONS.map((p) => ({
   value: p.value,
@@ -379,10 +305,13 @@ function InlineMenuCell<T extends string>({
 function InlineDateCell({
   value,
   tentative,
+  abTesting,
   onChange,
 }: {
   value: string | null;
   tentative: boolean;
+  // ABテスト中は日付そのものより「いつから走っているか」が知りたいので表示を差し替える
+  abTesting?: boolean;
   onChange: (value: string | null, tentative: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -404,7 +333,12 @@ function InlineDateCell({
   return (
     <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
       <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
-        {value ? (
+        {abTesting ? (
+          <span className="text-xs font-medium text-teal-700">
+            {AB_TEST_STATUS}
+            {value ? `（${value}〜）` : ""}
+          </span>
+        ) : value ? (
           tentative ? <span className="text-xs text-slate-400">{value} 仮</span> : value
         ) : "-"}
       </Menu.Trigger>
@@ -553,6 +487,7 @@ function ReleaseDateCell({
           <InlineDateCell
             value={project.target_date}
             tentative={project.target_date_tentative}
+            abTesting={project.status === AB_TEST_STATUS}
             onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
           />
         </span>
@@ -563,217 +498,7 @@ function ReleaseDateCell({
   );
 }
 
-// ドラッグ可能な行
-const SortableRow = memo(function SortableRow({
-  project,
-  isExpanded,
-  onToggle,
-  onEdit,
-  onDuplicate,
-  onDelete,
-  onTogglePriority,
-  onTogglePetit,
-  onToggleAb,
-  onUpdateField,
-  onPhasesChange,
-  members,
-  dragDisabled = false,
-  displayNo,
-}: {
-  project: Project;
-  isExpanded: boolean;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
-  onTogglePriority?: () => void;
-  onTogglePetit?: () => void;
-  onToggleAb?: () => void;
-  onUpdateField: (id: string, patch: Partial<Project>) => void;
-  onPhasesChange?: () => void;
-  members: Member[];
-  dragDisabled?: boolean;
-  // 表示用の連番（1始まり）。渡されると # 列に DB の priority ではなくこの値を表示する。
-  displayNo?: number;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: project.id, disabled: dragDisabled });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
-  const kebabRef = useRef<HTMLButtonElement>(null);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const x = e.clientX;
-    const y = e.clientY;
-    setMenuAnchor({ getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) });
-    setMenuOpen(true);
-  }, []);
-
-  const handleKebabClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMenuAnchor(kebabRef.current);
-    setMenuOpen(true);
-  }, []);
-
-  return (
-    <>
-    <tr
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "group transition-colors hover:bg-gray-50",
-        isDragging && "relative z-10 bg-white shadow-md"
-      )}
-      onContextMenu={handleContextMenu}
-    >
-      <td className="w-8 py-3 px-2 text-center">
-        {dragDisabled ? (
-          <span className="text-slate-200" title="優先度順のときだけ並び替えできます">⠿</span>
-        ) : (
-          <span
-            {...attributes}
-            {...listeners}
-            className="cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
-            title="ドラッグして並び替え"
-          >
-            ⠿
-          </span>
-        )}
-      </td>
-      <td className="w-10 py-3 px-4 text-center font-mono text-xs text-slate-500">
-        {project.priority_undecided ? "-" : displayNo ?? project.priority}
-      </td>
-      <td className="w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-xs text-slate-500 whitespace-nowrap">
-        <span className="flex items-center gap-1" title={project.group_lv2 ?? project.group_lv1 ?? undefined}>
-          {project.group_lv2 ? <GroupLv2Icon value={project.group_lv2} size={20} /> : null}
-          <span className="hidden min-[1500px]:inline">{project.group_lv2 ?? project.group_lv1 ?? "-"}</span>
-          {!project.group_lv2 && <span className="min-[1500px]:hidden">-</span>}
-        </span>
-      </td>
-      <td className="min-w-[240px] py-3 px-4 text-sm text-slate-900 cursor-pointer" onClick={onToggle}>
-        <span className="flex items-center gap-1 group/title">
-          {isExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-          {project.title}
-          <Link
-            href={`/projects/${project.id}`}
-            target="_blank"
-            onClick={(e) => e.stopPropagation()}
-            className="opacity-0 group-hover/title:opacity-100 text-slate-400 hover:text-[#4a9eff] transition-all ml-1"
-            title="施策の個別ページを開く"
-          >
-            <ExternalLink size={13} />
-          </Link>
-        </span>
-      </td>
-      <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <ReleaseDateCell project={project} onUpdateField={onUpdateField} />
-      </td>
-      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <InlineMenuCell
-          value={project.director_id}
-          options={memberOptions(members, "ディレクター")}
-          onChange={(v) => onUpdateField(project.id, { director_id: v || null })}
-        >
-          {project.director?.display_name ?? <EmptyPlaceholder />}
-        </InlineMenuCell>
-      </td>
-      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <InlineMenuCell
-          value={project.designer_id}
-          options={memberOptions(members, "デザイナー")}
-          onChange={(v) => onUpdateField(project.id, { designer_id: v || null })}
-        >
-          {project.designer?.display_name ?? <EmptyPlaceholder />}
-        </InlineMenuCell>
-      </td>
-      <td className="w-24 py-3 px-4 text-sm text-body whitespace-nowrap">
-        <InlineMenuCell
-          value={project.engineer_id}
-          options={memberOptions(members, "エンジニア")}
-          onChange={(v) => onUpdateField(project.id, { engineer_id: v || null })}
-        >
-          {project.engineer?.display_name ?? <EmptyPlaceholder />}
-        </InlineMenuCell>
-      </td>
-      <td className="w-24 py-3 px-4 whitespace-nowrap">
-        <InlineMenuCell
-          value={project.status}
-          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
-          onChange={(v) => onUpdateField(project.id, { status: v })}
-        >
-          <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
-            <span className={cn("w-1.5 h-1.5 rounded-full", statusConfig(project.status).dot)} />
-            {project.status}
-          </span>
-        </InlineMenuCell>
-      </td>
-      <td className="w-8 py-3 px-2 text-center text-sm">
-        <InlineMenuCell
-          value={project.progress}
-          options={progressOptions}
-          onChange={(v) => onUpdateField(project.id, { progress: v })}
-        >
-          <ProgressIcon value={project.progress} />
-        </InlineMenuCell>
-      </td>
-      <td className="w-24 py-3 pl-6 pr-2 whitespace-nowrap">
-        <ApprovalCell project={project} onUpdateField={onUpdateField} />
-      </td>
-      <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[200px] max-w-[200px]">
-        <InlineNotesCell
-          value={project.notes ?? ""}
-          onSave={(text) => onUpdateField(project.id, { notes: text || null })}
-        />
-      </td>
-      <td className="w-10 py-3 px-2">
-        <button
-          ref={kebabRef}
-          onClick={handleKebabClick}
-          className="rounded-md p-1 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-slate-600"
-        >
-          <EllipsisVertical size={16} />
-        </button>
-      </td>
-    </tr>
-    <ProjectActionMenu
-      open={menuOpen}
-      onOpenChange={setMenuOpen}
-      anchor={menuAnchor}
-      onEdit={onEdit}
-      onDuplicate={onDuplicate}
-      onDelete={onDelete}
-      onTogglePriority={onTogglePriority}
-      priorityLabel={project.priority_undecided ? "↑ 決定" : "↓ 未決定"}
-      onTogglePetit={onTogglePetit}
-      petitLabel={project.is_petit_improvement ? "プチ改善から戻す" : "プチ改善に移動"}
-      onToggleAb={onToggleAb}
-      abLabel={project.is_ab_test ? "ABテストから戻す" : "ABテストに移動"}
-    />
-    {isExpanded && (
-      <tr>
-        <td colSpan={13} className="p-0">
-          <PhasePanel projectId={project.id} project={project} members={members} directorId={project.director_id} designerId={project.designer_id} engineerId={project.engineer_id} onPhasesChange={onPhasesChange} />
-        </td>
-      </tr>
-    )}
-    </>
-  );
-});
-
-// 通常の行（事業別ビュー用、D&Dなし）
+// 通常の行（D&Dなし）。公開済みビューで使い、SortableProjectRow のベースにもなる。
 const ProjectRow = memo(function ProjectRow({
   project,
   isExpanded,
@@ -786,8 +511,9 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField,
   onPhasesChange,
   hidePriority,
-  hideSize,
+  hideProgress,
   showProposedDate,
+  statusOptions,
   showPetitBadge,
   showAbBadge,
   members,
@@ -804,8 +530,11 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   hidePriority?: boolean;
-  hideSize?: boolean;
+  // 公開済みビュー用。完了済みの行では進行状況（⏸/▶/✅）が意味を持たないので出さない
+  hideProgress?: boolean;
   showProposedDate?: boolean;
+  // ステータスの選択肢。既定は STATUS_OPTIONS で、ABテストタブだけ AB_STATUS_OPTIONS を渡す
+  statusOptions?: readonly string[];
   showPetitBadge?: boolean;
   showAbBadge?: boolean;
   members: Member[];
@@ -837,12 +566,12 @@ const ProjectRow = memo(function ProjectRow({
   }, []);
 
   // 展開パネルを表で全幅に伸ばすための列数。表示条件付きの列を足し引きして数える。
-  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 進行 / 備考 / ケバブ = 9
+  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 備考 / ケバブ = 8
   const colCount =
-    9 +
+    8 +
     (sortable ? 1 : 0) +
     (hidePriority ? 0 : 1) +
-    (hideSize ? 0 : 1) +
+    (hideProgress ? 0 : 1) +
     (showProposedDate ? 2 : 0);
 
   return (
@@ -931,7 +660,7 @@ const ProjectRow = memo(function ProjectRow({
       <td className="w-24 py-3 px-4 whitespace-nowrap">
         <InlineMenuCell
           value={project.status}
-          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+          options={(statusOptions ?? STATUS_OPTIONS).map((s) => ({ value: s, label: s }))}
           onChange={(v) => onUpdateField(project.id, { status: v })}
         >
           <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
@@ -952,26 +681,17 @@ const ProjectRow = memo(function ProjectRow({
             : "-"}
         </td>
       )}
-      {!hideSize && (
-        <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
+      {!hideProgress && (
+        <td className="w-8 py-3 px-2 text-center text-sm">
           <InlineMenuCell
-            value={project.size ?? ""}
-            options={sizeOptionsWithNone}
-            onChange={(v) => onUpdateField(project.id, { size: v || null })}
+            value={project.progress}
+            options={progressOptions}
+            onChange={(v) => onUpdateField(project.id, { progress: v })}
           >
-            {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
+            <ProgressIcon value={project.progress} />
           </InlineMenuCell>
         </td>
       )}
-      <td className="w-8 py-3 px-2 text-center text-sm">
-        <InlineMenuCell
-          value={project.progress}
-          options={progressOptions}
-          onChange={(v) => onUpdateField(project.id, { progress: v })}
-        >
-          <ProgressIcon value={project.progress} />
-        </InlineMenuCell>
-      </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         <InlineNotesCell
           value={project.notes ?? ""}
@@ -1093,33 +813,16 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     }
     return map;
   }, [phaseAssignees]);
-  const [viewMode, setViewMode] = useState<ViewMode>("priority");
+  const [viewMode, setViewMode] = useState<ViewMode>("investment");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<InvestmentProgram | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  // ガントはタブ（施策の分類）とは別軸の見方なので、タブとは独立した表示トグルで持つ
+  const [ganttOpen, setGanttOpen] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
-  // 優先度順ビューの並び替え。priority=本来の優先度順（D&D可）、target_date=公開目安日順
-  const [sortKey, setSortKey] = useState<"priority" | "target_date">("priority");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const isPrioritySort = sortKey === "priority";
-
-  // 公開目安ヘッダーをクリックしたとき：target_date 昇順 → 降順 → 優先度順に戻る
-  const toggleTargetDateSort = useCallback(() => {
-    if (sortKey !== "target_date") {
-      setSortKey("target_date");
-      setSortDir("asc");
-    } else if (sortDir === "asc") {
-      setSortDir("desc");
-    } else {
-      setSortKey("priority");
-    }
-  }, [sortKey, sortDir]);
-
-  const resetToPrioritySort = useCallback(() => setSortKey("priority"), []);
-
   // メンバー + 着手状況フィルタ
   // メンバー絞り込みは施策の director/designer/engineer に加え、フェーズ担当者も対象にする
   // （1施策を複数エンジニアで分担する場合、フェーズ側にのみ担当者が入るケースがあるため）
@@ -1134,41 +837,10 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     return true;
   }, [filterMemberId, filterStartStatus, phaseAssigneesByProjectId]);
 
-  // プチ改善／ABテストのフラグ付き施策は通常の一覧（優先度順/Eng別/事業別/ガント/公開済み）から外し、
-  // それぞれ専用ビューに集約する。2つのフラグは排他運用（片方を立てるともう片方は下りる）。
+  // プチ改善／ABテストのフラグ付き施策は3分類ビュー（投資/改善/アイデア）から外し、
+  // それぞれ専用タブに集約する。2つのフラグは排他運用（片方を立てるともう片方は下りる）。
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && !p.is_petit_improvement && !p.is_ab_test && filterProject(p)), [projects, filterProject]);
-  const decidedProjects = useMemo(() => activeProjects.filter((p) => !p.priority_undecided), [activeProjects]);
-  const undecidedProjects = useMemo(() => activeProjects.filter((p) => p.priority_undecided), [activeProjects]);
-
-  // 表示用の決定済みリスト。target_date 並び替え時は公開目安日でソート（未設定は末尾）
-  const displayedDecidedProjects = useMemo(() => {
-    if (isPrioritySort) return decidedProjects;
-    const sorted = [...decidedProjects].sort((a, b) => {
-      if (!a.target_date && !b.target_date) return 0;
-      if (!a.target_date) return 1;
-      if (!b.target_date) return -1;
-      return a.target_date.localeCompare(b.target_date);
-    });
-    return sortDir === "desc" ? sorted.reverse() : sorted;
-  }, [decidedProjects, isPrioritySort, sortDir]);
-
-  // 未決定施策をグループ（lv2）順に並べる
-  const undecidedGrouped = useMemo(() => {
-    const groups: { lv2: string; items: Project[] }[] = [];
-    for (const lv2 of GROUP_LV2_OPTIONS) {
-      groups.push({ lv2: lv2.value, items: [] });
-    }
-    groups.push({ lv2: "未分類", items: [] });
-    for (const p of undecidedProjects) {
-      const key = p.group_lv2 ?? "未分類";
-      const group = groups.find((g) => g.lv2 === key);
-      if (group) group.items.push(p);
-      else groups.find((g) => g.lv2 === "未分類")!.items.push(p);
-    }
-    return groups.filter((g) => g.items.length > 0);
-  }, [undecidedProjects]);
-
   // 公開済み（完了）は通常施策・プチ改善施策の両方を含める。
   // プチ改善由来のものは公開済みビューで紫のプチ改善アイコンを付けて区別する。
   const releasedProjects = useMemo(() =>
@@ -1196,11 +868,16 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     [projects, filterProject]
   );
 
-  // 3分類（投資/改善/アイデア）ビュー。
-  // MECE の対象は「通常の一覧に載る未完了の施策」= activeProjects と同じ母集団にそろえる。
-  //   - 完了（公開済み）は既存どおり「公開済み」ビューへ卒業させる
-  //   - プチ改善／ABテストは既存どおり専用ビューに集約したまま（どのタブにも二重表示しない）
-  // これで各施策はこの3タブのうち高々1つにしか現れない。
+  // ABテスト実施中の件数（ステータスが「ABテスト中」の施策）
+  const abTestingCount = useMemo(
+    () => abProjects.filter((p) => p.status === AB_TEST_STATUS).length,
+    [abProjects]
+  );
+
+  // 3分類（投資/改善/アイデア）ビュー。母集団は activeProjects（未完了・プチ改善/ABテスト以外）。
+  //   - 完了（公開済み）は「公開済み」タブへ卒業させる
+  //   - プチ改善／ABテストはそれぞれの専用タブに集約したまま
+  // これで各施策はどのタブにも高々1回しか現れない。
   const trackProjects = useMemo(() => {
     const map = new Map<Track, Project[]>(TRACK_OPTIONS.map((t) => [t.value, [] as Project[]]));
     for (const p of activeProjects) {
@@ -1227,25 +904,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     }
     return { groups, unassigned };
   }, [investmentPrograms, investmentProjects]);
-
-  // エンジニア別グルーピング（施策の engineer で分類、未割当は末尾）
-  // 各グループ内は activeProjects の順（=優先度順）を維持
-  const engineerGroups = useMemo(() => {
-    const map = new Map<string, { name: string; items: Project[] }>();
-    for (const p of activeProjects) {
-      const key = p.engineer_id ?? "__none__";
-      const name = p.engineer?.display_name ?? "未割当";
-      if (!map.has(key)) map.set(key, { name, items: [] });
-      map.get(key)!.items.push(p);
-    }
-    // タスク数の多い順。未割当は末尾。同数は名前順
-    return [...map.values()].sort((a, b) => {
-      if (a.name === "未割当") return 1;
-      if (b.name === "未割当") return -1;
-      if (b.items.length !== a.items.length) return b.items.length - a.items.length;
-      return a.name.localeCompare(b.name, "ja");
-    });
-  }, [activeProjects]);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -1331,15 +989,15 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // プチ改善／ABテストのタスクは通常の優先度順一覧に載らないため、メイン一覧の priority はずらさない
+    // プチ改善／ABテストのタスクは専用タブに入るので、3分類タブ側の priority はずらさない
     if (!formData.is_petit_improvement && !formData.is_ab_test) {
-      // 既存の決定済み施策の priority を +1 してずらす
+      // 3分類タブに載る既存施策の priority を +1 してずらし、新規を先頭に置く
       const decided = projects.filter((p) => !p.priority_undecided && p.status !== "完了");
       for (const p of decided) {
         await supabase.from("projects").update({ priority: p.priority + 1 } as never).eq("id", p.id);
       }
     } else {
-      // 新規のプチ改善／ABテストは priority=1（各ビューの先頭）で入れる。同じビューの既存タスクが
+      // 新規のプチ改善／ABテストは priority=1（各タブの先頭）で入れる。同じタブの既存タスクが
       // 1 以下に居ると同値スロットになって並び替えできなくなるので、2 以上の増加列に押し出す。
       // 絞り込みに関係なく全タスクを対象にするため petitProjects / abProjects は使わない
       const inSameView = formData.is_ab_test
@@ -1461,7 +1119,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   };
 
   const handleUpdateField = useCallback(async (id: string, patch: Partial<Project>) => {
-    await supabase.from("projects").update(patch as never).eq("id", id);
+    const { error } = await supabase.from("projects").update(patch as never).eq("id", id);
+    // 失敗を黙って捨てると reload で元の値に戻るだけになり、「押しても変わらない」に見えて
+    // 原因（制約違反・権限など）が分からなくなるので、その場で出す。
+    if (error) {
+      console.error("施策の更新に失敗", { id, patch, error });
+      alert(`保存できませんでした: ${error.message}`);
+    }
     await reload();
   }, [supabase, reload]);
 
@@ -1497,9 +1161,9 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     [toggleViewFlag]
   );
 
-  // プチ改善／ABテストビューのD&D完了時：並び順を priority に反映して保存。
-  // メイン一覧とは独立させるため、そのビューの施策が元々持つ priority 値を昇順スロットとして
-  // 新しい並び順へ再割り当てする（メイン一覧の priority には手を付けない）。
+  // 各ビューのD&D完了時：並び順を priority に反映して保存。
+  // ビューをまたいで影響しないよう、そのビュー（塊）の施策が元々持つ priority 値を
+  // 昇順スロットとして新しい並び順へ再割り当てする（他の施策の priority には触らない）。
   const handleSubViewDragEnd = async (event: DragEndEvent, viewProjects: Project[]) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -1576,93 +1240,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     }
   };
 
-  // D&D完了時：優先順を振り直してDBに保存
-  const handleTogglePriority = async (project: Project) => {
-    const newUndecided = !project.priority_undecided;
-    await supabase
-      .from("projects")
-      .update({ priority_undecided: newUndecided } as never)
-      .eq("id", project.id);
-    await reload();
-  };
-
-  const handleSectionDragEnd = async (event: DragEndEvent, isUndecidedSection: boolean) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const sectionProjects = isUndecidedSection ? [...undecidedProjects] : [...decidedProjects];
-    const oldIndex = sectionProjects.findIndex((p) => p.id === active.id);
-    const newIndex = sectionProjects.findIndex((p) => p.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const [moved] = sectionProjects.splice(oldIndex, 1);
-    sectionProjects.splice(newIndex, 0, moved);
-
-    // 決定済み + 未決定を結合して優先順を振り直し
-    const newDecided = isUndecidedSection ? decidedProjects : sectionProjects;
-    const newUndecided = isUndecidedSection ? sectionProjects : undecidedProjects;
-    const allActive = [...newDecided, ...newUndecided].map((p, i) => ({ ...p, priority: i + 1 }));
-
-    const completedProjects = projects.filter((p) => p.status === "完了");
-    setProjects([...allActive, ...completedProjects]);
-
-    // 変更があった行だけ更新
-    const changed = allActive.filter((p, i) => {
-      const orig = [...decidedProjects, ...undecidedProjects][i];
-      return !orig || orig.id !== p.id || orig.priority !== p.priority;
-    });
-    if (changed.length > 0) {
-      await Promise.all(
-        changed.map((p) =>
-          supabase
-            .from("projects")
-            .update({ priority: p.priority } as never)
-            .eq("id", p.id)
-        )
-      );
-    }
-  };
-
-  // 事業別のグルーピング（lv2 > lv3 の2階層、定義順、空グループも表示）
-  const groupedProjects = () => {
-    type Lv3Group = { name: string; items: Project[] };
-    type Lv2Group = { lv1: string; lv2: string; lv3Groups: Lv3Group[] };
-
-    const result: Lv2Group[] = [];
-
-    for (const lv2 of GROUP_LV2_OPTIONS) {
-      // この lv2 に属する lv3 を定義順で作成
-      const lv3s = GROUP_LV3_OPTIONS.filter((o) => o.parent === lv2.value);
-      const lv3Groups: Lv3Group[] = lv3s.map((lv3) => ({
-        name: lv3.value,
-        items: [],
-      }));
-      result.push({ lv1: lv2.parent, lv2: lv2.value, lv3Groups });
-    }
-
-    for (const project of activeProjects) {
-      const lv2Key = project.group_lv2;
-      const lv3Key = project.group_lv3;
-      const lv2Group = result.find((g) => g.lv2 === lv2Key);
-      if (lv2Group) {
-        const lv3Group = lv2Group.lv3Groups.find((g) => g.name === lv3Key);
-        if (lv3Group) {
-          lv3Group.items.push(project);
-        } else {
-          // lv3 未設定 or 定義外 → lv2 の最初の lv3 に入れる
-          lv2Group.lv3Groups[0]?.items.push(project);
-        }
-      }
-    }
-
-    return result;
-  };
-
   const theadClasses = "border-b border-slate-200 bg-gray-50";
-  // 優先度順テーブルのヘッダーをスクロール追従させる。
-  // 上にグローバルヘッダー(45px) + ビュー切替バー(約60px) があるので top を 105px に。
-  const stickyTh = "sticky top-[105px] z-[12] bg-gray-50";
-
   // 3分類ビュー（投資/改善/アイデア）の表ヘッダー。
   // 列順は ProjectRow の td と対応させる（drag → タイトル … 状態 → 進行 → 備考 → メニュー）。
   // 分類とプロジェクトは行に出さない（タブと塊の見出しで分かるので、行では冗長）。
@@ -1710,7 +1288,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 onUpdateField={handleUpdateField}
                 onPhasesChange={reloadPhaseAssignees}
                 hidePriority
-                hideSize
                 members={members}
               />
             ))}
@@ -1720,65 +1297,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     </table>
   );
 
-  // sticky=true で優先度順ビュー（1本の長い表）用にヘッダー追従。
-  // グループ表示（Eng別など）は小さい表が積み重なるので sticky を外す。
-  const priorityTableHead = (sticky = true) => {
-    const th = sticky ? stickyTh : "bg-gray-50";
-    return (
-    <thead>
-      <tr className={theadClasses}>
-        <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
-        <th scope="col" className={cn("w-10 py-3 px-4 text-center text-xs font-medium text-slate-500", th)}>
-          <button
-            type="button"
-            onClick={resetToPrioritySort}
-            className={cn("cursor-pointer hover:text-slate-700", isPrioritySort && "text-slate-900 font-semibold")}
-            title="優先度順に並べる（リセット）"
-          >
-            #{isPrioritySort && " ▼"}
-          </button>
-        </th>
-        <th scope="col" className={cn("w-10 min-[1500px]:w-36 py-3 px-2 min-[1500px]:px-4 text-left text-xs font-medium text-slate-500", th)}><span className="hidden min-[1500px]:inline">事業</span></th>
-        <th scope="col" className={cn("min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>タイトル</th>
-        <th scope="col" className={cn("w-36 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>
-          <button
-            type="button"
-            onClick={toggleTargetDateSort}
-            className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-slate-700", sortKey === "target_date" && "text-slate-900 font-semibold")}
-            title="公開目安日で並び替え（昇順→降順→優先度順）"
-          >
-            <span className="flex flex-col items-start leading-tight">
-              <span className="flex items-center gap-1">
-                公開目安
-                {sortKey === "target_date"
-                  ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-                  : <ArrowUpDown size={12} className="opacity-40" />}
-              </span>
-              <span className="flex items-center gap-0.5 text-[10px] font-normal text-red-400">
-                <Pin size={9} fill="currentColor" />
-                ＝動かせない日
-              </span>
-            </span>
-          </button>
-        </th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Dir</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Des</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>Eng</th>
-        <th scope="col" className={cn("w-24 py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>状態</th>
-        <th scope="col" className={cn("w-8 py-3 px-2", th)}></th>
-        <th scope="col" className={cn("w-24 py-3 pl-6 pr-2 text-left text-xs font-medium text-slate-500", th)} data-tooltip="須川さんのレビューが必要なゲート（W=WFレビュー / デ=デザインレビュー / 公=公開前レビュー）。青=要レビュー（須川さん待ち）／クリックで巡回：青=未対応 → グレー=完了 → 濃いグレー=不要">
-          <span className="flex flex-col leading-tight">
-            <span>要承認</span>
-            <span className="text-[10px] font-normal text-[#4a9eff]">青=要確認</span>
-          </span>
-        </th>
-        <th scope="col" className={cn("py-3 px-4 text-left text-xs font-medium text-slate-500", th)}>備考</th>
-        <th scope="col" className={cn("w-10 py-3 px-2", th)}></th>
-      </tr>
-    </thead>
-    );
-  };
-
   return (
     <div>
       {/* ヘッダー + ビュー切替 */}
@@ -1787,126 +1305,39 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         <div className="relative mx-auto flex max-w-[1600px] items-center justify-between px-5 py-3">
         <div className="flex items-center gap-4">
           <div className="flex gap-0.5 rounded-xl bg-white/8 p-1 backdrop-blur-sm">
-            {/* 3分類タブ（投資 → 改善 → アイデア）。施策は必ずこのどれか1つに入る */}
-            <button
-              onClick={() => setViewMode("investment")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "investment"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-              title="新規投資・構造改革：将来のリターンを狙って大きな工数を投じる施策"
-            >
-              <Rocket size={14} />
-              投資
-            </button>
-            <button
-              onClick={() => setViewMode("improvement")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "improvement"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-              title="継続改善・運用強化：既存機能の価値を高め、日々の成果や業務効率を底上げする施策"
-            >
-              <Repeat size={14} />
-              改善
-            </button>
-            <button
-              onClick={() => setViewMode("idea")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "idea"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-              title="アイデア：実施が未確定の検討案や、将来的な施策の候補"
-            >
-              <Lightbulb size={14} />
-              アイデア
-            </button>
-            <span className="mx-1 my-1.5 w-px bg-white/10" />
-            <button
-              onClick={() => setViewMode("priority")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "priority"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              優先度順
-            </button>
-            <button
-              onClick={() => setViewMode("petit")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "petit"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              <Sparkles size={14} />
-              プチ改善
-            </button>
-            <button
-              onClick={() => setViewMode("ab")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "ab"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              <FlaskConical size={14} />
-              ABテスト
-            </button>
-            <button
-              onClick={() => setViewMode("engineer")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "engineer"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              Eng別
-            </button>
-            <button
-              onClick={() => setViewMode("group")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "group"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              事業別
-            </button>
-            <button
-              onClick={() => setViewMode("gantt")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "gantt"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              ガント
-            </button>
-            <button
-              onClick={() => setViewMode("released")}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                viewMode === "released"
-                  ? "bg-white text-slate-900 shadow-md shadow-black/10"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              公開済み
-            </button>
+            {VIEW_TAB_GROUPS.map((group, groupIndex) => (
+              <Fragment key={group[0].key}>
+                {groupIndex > 0 && <span className="mx-1 my-1.5 w-px bg-white/10" />}
+                {group.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => {
+                      setViewMode(tab.key);
+                      setGanttOpen(false);
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+                      viewMode === tab.key && !ganttOpen
+                        ? "bg-white text-slate-900 shadow-md shadow-black/10"
+                        : "text-white/50 hover:text-white/80 hover:bg-white/5"
+                    )}
+                    title={tab.title}
+                  >
+                    {tab.icon && <tab.icon size={14} />}
+                    {tab.label}
+                    {/* 実施中のABテスト数はタブを開かなくても見たいのでバッジで出す（0件のときは出さない） */}
+                    {tab.key === "ab" && abTestingCount > 0 && (
+                      <span
+                        className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                        title={`ABテスト中の施策 ${abTestingCount}件`}
+                      >
+                        {abTestingCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </Fragment>
+            ))}
           </div>
           {/* メンバーフィルター */}
           <select
@@ -1932,17 +1363,50 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
             <option value="started">着手中</option>
           </select>
         </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-400 shadow-lg shadow-primary-500/25 transition-all duration-200 cursor-pointer"
-        >
-          + 新規作成
-        </button>
+        <div className="flex items-center gap-3">
+          {/* ガントはタブとは別軸（施策の分類ではなく期間の見方）なので、
+              タブ群から離してアウトライン表示のトグルとして置く */}
+          <button
+            onClick={() => setGanttOpen((prev) => !prev)}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border transition-all duration-200 cursor-pointer",
+              ganttOpen
+                ? "border-primary-400/60 bg-primary-500/20 text-primary-200"
+                : "border-white/15 bg-white/8 text-white/60 hover:bg-white/12 hover:text-white/80"
+            )}
+            title="全施策を期間で見る（タブの分類とは別軸）"
+            aria-pressed={ganttOpen}
+          >
+            <ChartGantt size={15} />
+            ガント
+          </button>
+          <button
+            onClick={() => setDialogOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-400 shadow-lg shadow-primary-500/25 transition-all duration-200 cursor-pointer"
+          >
+            + 新規作成
+          </button>
+        </div>
         </div>
       </div>
 
       {/* 3分類ビュー：新規投資・構造改革（大きな塊 → 配下の施策） */}
-      {viewMode === "investment" && (
+      {/* ガント（タブとは独立。未完了の投資／改善／アイデアの施策を期間で見る） */}
+      {ganttOpen && (
+        <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
+          {/* 高さはページがスクロールしない範囲に収める（グローバルヘッダー45 + タブバー60 +
+              余白64 = 約170px）。ページが縦スクロールすると、ガント内の日付ヘッダーが
+              固定ヘッダーの裏に隠れて読めなくなるため。 */}
+          <GanttChart
+            projects={activeProjects}
+            members={members}
+            filterMemberId={filterMemberId}
+            height="calc(100vh - 175px)"
+          />
+        </Suspense>
+      )}
+
+      {!ganttOpen && viewMode === "investment" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -2066,7 +1530,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* 3分類ビュー：継続改善・運用強化 / アイデア（どちらもフラットな1本の表） */}
-      {(viewMode === "improvement" || viewMode === "idea") && (() => {
+      {!ganttOpen && (viewMode === "improvement" || viewMode === "idea") && (() => {
         const isIdea = viewMode === "idea";
         const items = isIdea ? ideaProjects : improvementProjects;
         const option = TRACK_OPTIONS.find((t) => t.value === (isIdea ? "idea" : "improvement"))!;
@@ -2118,7 +1582,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                             onUpdateField={handleUpdateField}
                             onPhasesChange={reloadPhaseAssignees}
                             hidePriority
-                            hideSize
                             members={members}
                           />
                         ))}
@@ -2132,240 +1595,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         );
       })()}
 
-      {/* 優先度順ビュー（D&D対応） */}
-      {viewMode === "priority" && (
-        <div className="space-y-6">
-          {/* 決定済みカード（ヘッダー sticky のため overflow-clip。hidden だと sticky が効かない） */}
-          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-clip">
-            <table className="w-full text-sm">
-              {priorityTableHead()}
-              {activeProjects.length === 0 ? (
-                <tbody>
-                  <tr>
-                    <td colSpan={13} className="py-16 text-center text-base text-slate-500">
-                      施策がまだありません。「新規作成」から追加してください。
-                    </td>
-                  </tr>
-                </tbody>
-              ) : decidedProjects.length === 0 ? (
-                <tbody>
-                  <tr>
-                    <td colSpan={13} className="py-10 text-center text-sm text-slate-500">
-                      優先順位が決定済みの施策はありません。
-                    </td>
-                  </tr>
-                </tbody>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event) => handleSectionDragEnd(event, false)}
-                >
-                  <SortableContext
-                    items={displayedDecidedProjects.map((p) => p.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <tbody className="divide-y divide-slate-100">
-                      {displayedDecidedProjects.map((project, index) => (
-                        <SortableRow
-                          key={project.id}
-                          project={project}
-                          displayNo={index + 1}
-                          isExpanded={expandedProjectId === project.id}
-                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                          onEdit={() => setEditingProject(project)}
-                          onDuplicate={() => handleDuplicate(project)}
-                          onDelete={() => handleDelete(project.id)}
-                          onTogglePriority={() => handleTogglePriority(project)}
-                          onTogglePetit={() => handleTogglePetit(project)}
-                          onToggleAb={() => handleToggleAb(project)}
-                          onUpdateField={handleUpdateField}
-                          onPhasesChange={reloadPhaseAssignees}
-                          members={members}
-                          dragDisabled={!isPrioritySort}
-                        />
-                      ))}
-                    </tbody>
-                  </SortableContext>
-                </DndContext>
-              )}
-            </table>
-          </div>
-
-          {/* 未決定カード */}
-          {undecidedProjects.length > 0 && (
-            <div className="bg-white rounded-xl border border-amber-200 shadow-xl shadow-black/20 overflow-clip">
-              <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  <h3 className="text-sm font-semibold text-amber-900">優先順位 未決定</h3>
-                </div>
-                <span className="text-xs text-amber-700">{undecidedProjects.length}件</span>
-              </div>
-              <table className="w-full text-sm">
-                {priorityTableHead()}
-                  {undecidedGrouped.map((group) => (
-                    <tbody key={group.lv2} className="divide-y divide-slate-100">
-                      <tr>
-                        <td colSpan={13} className="p-0">
-                          <div className="flex items-center gap-2 px-10 py-2 bg-gray-50 border-t border-slate-200">
-                            <GroupLv2Icon value={group.lv2} size={16} />
-                            <span className="text-xs font-medium text-slate-500">{group.lv2}</span>
-                          </div>
-                        </td>
-                      </tr>
-                      {group.items.map((project) => (
-                        <SortableRow
-                          key={project.id}
-                          project={project}
-                          isExpanded={expandedProjectId === project.id}
-                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                          onEdit={() => setEditingProject(project)}
-                          onDuplicate={() => handleDuplicate(project)}
-                          onDelete={() => handleDelete(project.id)}
-                          onTogglePriority={() => handleTogglePriority(project)}
-                          onTogglePetit={() => handleTogglePetit(project)}
-                          onToggleAb={() => handleToggleAb(project)}
-                          onUpdateField={handleUpdateField}
-                          onPhasesChange={reloadPhaseAssignees}
-                          members={members}
-                          dragDisabled={!isPrioritySort}
-                        />
-                      ))}
-                    </tbody>
-                  ))}
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 事業別ビュー */}
-      {viewMode === "group" && (
-        <div className="space-y-6">
-          {groupedProjects().map((group) => {
-            const totalItems = group.lv3Groups.reduce((sum, g) => sum + g.items.length, 0);
-            return (
-              <div
-                key={group.lv2}
-                className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
-              >
-                <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
-                  <span className="text-xs text-slate-500">{group.lv1}</span>
-                  {group.lv1 && <span className="text-xs text-slate-400">/</span>}
-                  <GroupLv2Icon value={group.lv2} size={16} />
-                  <h3 className="text-base font-bold text-slate-900">{group.lv2}</h3>
-                  <span className="text-xs text-slate-500">
-                    {totalItems}件
-                  </span>
-                </div>
-                {group.lv3Groups.map((lv3Group) => (
-                  <div key={lv3Group.name}>
-                    <div className="flex items-center gap-2 border-t border-slate-200 bg-gray-50 px-4 py-2.5 first:border-t-0">
-                      <GroupLv3Icon value={lv3Group.name} />
-                      <span className="text-sm font-semibold text-slate-700">
-                        {lv3Group.name}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {lv3Group.items.length}件
-                      </span>
-                    </div>
-                    {lv3Group.items.length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-slate-400">
-                        施策なし
-                      </div>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className={theadClasses}>
-                            <th scope="col" className="w-10 py-3 px-4 text-center text-xs font-medium text-slate-500">#</th>
-                            <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                            <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
-                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
-                            <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-                            <th scope="col" className="w-8 py-3 px-2"></th>
-                            <th scope="col" className="py-3 px-4 text-left text-xs font-medium text-slate-500">備考</th>
-                            <th scope="col" className="w-10 py-3 px-2"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {lv3Group.items.map((project) => (
-                            <ProjectRow
-                              key={project.id}
-                              project={project}
-                              isExpanded={expandedProjectId === project.id}
-                              onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                              onEdit={() => setEditingProject(project)}
-                              onDuplicate={() => handleDuplicate(project)}
-                              onDelete={() => handleDelete(project.id)}
-                              onTogglePetit={() => handleTogglePetit(project)}
-                              onToggleAb={() => handleToggleAb(project)}
-                              onUpdateField={handleUpdateField}
-                              onPhasesChange={reloadPhaseAssignees}
-                              hideSize
-                              members={members}
-                            />
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Eng別ビュー（列構成は優先度順と同じ。エンジニアでグルーピング、ドラッグ並び替えは無効） */}
-      {viewMode === "engineer" && (
-        <div className="space-y-6">
-          {engineerGroups.length === 0 ? (
-            <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 px-4 py-16 text-center text-base text-slate-500">
-              施策がありません。
-            </div>
-          ) : (
-            engineerGroups.map((group) => (
-              <div
-                key={group.name}
-                className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden"
-              >
-                <div className="flex items-center gap-2 border-b border-slate-200 bg-gray-50 px-4 py-3">
-                  <h3 className="text-base font-bold text-slate-900">{group.name}</h3>
-                  <span className="text-xs text-slate-500">{group.items.length}件</span>
-                </div>
-                <table className="w-full text-sm">
-                  {priorityTableHead(false)}
-                  <tbody className="divide-y divide-slate-100">
-                    {group.items.map((project) => (
-                      <SortableRow
-                        key={project.id}
-                        project={project}
-                        isExpanded={expandedProjectId === project.id}
-                        onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                        onEdit={() => setEditingProject(project)}
-                        onDuplicate={() => handleDuplicate(project)}
-                        onDelete={() => handleDelete(project.id)}
-                        onTogglePetit={() => handleTogglePetit(project)}
-                        onToggleAb={() => handleToggleAb(project)}
-                        onUpdateField={handleUpdateField}
-                        onPhasesChange={reloadPhaseAssignees}
-                        members={members}
-                        dragDisabled
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
       {/* 公開済みビュー */}
-      {viewMode === "released" && (
+      {!ganttOpen && viewMode === "released" && (
         <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -2378,15 +1609,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
                 <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
                 <th scope="col" className="w-28 py-3 px-4 text-right text-xs font-medium text-slate-500 whitespace-nowrap" data-tooltip="起案日と公開日が同日の場合は1日">起案日からの日数</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
-                <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-10 py-3 px-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {releasedProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-base text-slate-500">
+                  <td colSpan={9} className="py-16 text-center text-base text-slate-500">
                     公開済みの施策はありません
                   </td>
                 </tr>
@@ -2405,6 +1634,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     onUpdateField={handleUpdateField}
                     onPhasesChange={reloadPhaseAssignees}
                     hidePriority
+                    hideProgress
                     showProposedDate
                     showPetitBadge
                     showAbBadge
@@ -2417,15 +1647,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         </div>
       )}
 
-      {/* ガントチャートビュー */}
-      {viewMode === "gantt" && (
-        <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
-          <GanttChart projects={activeProjects} members={members} filterMemberId={filterMemberId} />
-        </Suspense>
-      )}
-
       {/* プチ改善ビュー */}
-      {viewMode === "petit" && (
+      {!ganttOpen && viewMode === "petit" && (
         <div className="space-y-4">
           {/* 見出し */}
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-5 py-3">
@@ -2433,6 +1656,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <Sparkles size={16} className="text-violet-500" />
               <h3 className="text-sm font-semibold text-violet-900">プチ改善</h3>
               <span className="text-xs text-violet-700">{petitProjects.length}件</span>
+              <span className="text-xs text-violet-700/70">投資・改善施策と並行して進めるサブタスク</span>
               <Link
                 href="/petit-improvement"
                 className="ml-auto flex items-center gap-1 rounded-md border border-violet-300 bg-white/60 px-2 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-white"
@@ -2492,7 +1716,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          hideSize
                           members={members}
                         />
                       ))}
@@ -2506,7 +1729,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* ABテストビュー */}
-      {viewMode === "ab" && (
+      {!ganttOpen && viewMode === "ab" && (
         <div className="space-y-4">
           {/* 見出し */}
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-3">
@@ -2566,7 +1789,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          hideSize
+                          statusOptions={AB_STATUS_OPTIONS}
                           members={members}
                         />
                       ))}

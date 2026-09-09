@@ -17,12 +17,16 @@ import {
   getGroupLv2Options,
   getGroupLv3Options,
   STATUS_OPTIONS,
+  AB_STATUS_OPTIONS,
+  AB_TEST_STATUS,
   PROGRESS_OPTIONS,
   SIZE_OPTIONS,
-  TRACK_OPTIONS,
+  PLACEMENT_OPTIONS,
   DEFAULT_TRACK,
+  placementOf,
+  placementToFields,
 } from "@/lib/constants";
-import type { Track } from "@/lib/constants";
+import type { Placement } from "@/lib/constants";
 import type {
   Project,
   Member,
@@ -81,7 +85,15 @@ function FormField({
       <Label className="text-sm font-medium text-slate-700">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
-        {tooltip && <span className="ml-1 inline-flex cursor-help text-slate-400" data-tooltip={tooltip}>?</span>}
+        {tooltip && (
+        <span
+          className="ml-1 inline-flex cursor-help text-slate-400"
+          data-tooltip={tooltip}
+          data-tooltip-align="start"
+        >
+          ?
+        </span>
+      )}
       </Label>
       {children}
     </div>
@@ -189,27 +201,37 @@ export function ProjectDialog({
       if (field === "group_lv2") {
         next.group_lv3 = "";
       }
-      // 投資トラック以外にしたら、投資ビューの塊への割当は外す
-      if (field === "track" && value !== "investment") {
-        next.investment_program_id = "";
-      }
       return next;
     });
   };
 
+  // 置き場所（表示タブ）は form の track / プチ改善 / ABテストから求まるので、専用の state は持たない
+  const placement = placementOf(form);
+  // 「ABテスト中」はABテストタブ限定のステータス。ABテストに置く施策と、
+  // すでにその状態の施策を編集するときだけ選択肢に出す（勝手に別の値へ変わらないように）
+  const useAbStatuses = placement === "ab" || form.status === AB_TEST_STATUS;
+  const statusOptions = (useAbStatuses ? AB_STATUS_OPTIONS : STATUS_OPTIONS).map((s) => ({ value: s, label: s }));
   const sizeOptions = [
     { value: "", label: "未設定" },
     ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
   ];
-  const statusOptions = STATUS_OPTIONS.map((s) => ({ value: s, label: s }));
   const progressOptions = PROGRESS_OPTIONS.map((p) => ({
     value: p.value,
     label: `${p.label} ${p.value}`,
   }));
-  const trackOptions = TRACK_OPTIONS.map((t) => ({
-    value: t.value,
-    label: t.label,
+  const placementOptions = PLACEMENT_OPTIONS.map((o) => ({
+    value: o.value,
+    label: o.label,
   }));
+
+  const handlePlacementChange = (value: string) => {
+    setForm((prev) => {
+      const next = { ...prev, ...placementToFields(value as Placement, prev.track) };
+      // 投資以外に置くなら、投資ビューの塊への割当は外す
+      if (value !== "investment") next.investment_program_id = "";
+      return next;
+    });
+  };
   const investmentProgramOptions = [
     { value: "", label: "未割当" },
     ...investmentPrograms.map((p) => ({ value: p.id, label: p.name })),
@@ -240,24 +262,24 @@ export function ProjectDialog({
           <DialogTitle className="text-lg">{title}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 pt-2">
-          {/* 分類（投資 / 改善 / アイデア）。施策は必ずどれか1つに属する */}
-          <FormSection title="分類">
+          {/* 置き場所（表示タブ）。施策は必ずどれか1つに属する（MECE） */}
+          <FormSection title="置き場所">
             <div className="grid grid-cols-2 gap-3">
               <FormField
-                label="トラック"
+                label="タブ"
                 required
-                tooltip="施策は必ず1つに属する（MECE）。投資=将来のリターンを狙って大きな工数を投じる / 改善=既存機能の価値と業務効率の底上げ / アイデア=実施が未確定の検討案"
+                tooltip="施策は必ずどれか1つのタブに属する。公開（完了）すると自動で「公開済み」タブへ移る。"
               >
                 <NativeSelect
-                  value={form.track}
-                  onChange={(v) => update("track", v as Track)}
-                  options={trackOptions}
+                  value={placement}
+                  onChange={handlePlacementChange}
+                  options={placementOptions}
                 />
               </FormField>
-              {form.track === "investment" && (
+              {placement === "investment" && (
                 <FormField
                   label="プロジェクト"
-                  tooltip="投資ビューでどの大きな塊の下に並べるか。未割当のままでも「未割当」として表示される。"
+                  tooltip="投資タブでどの大きな塊の下に並べるか。未割当のままでも「未割当」として表示される。"
                 >
                   <NativeSelect
                     value={form.investment_program_id}
@@ -268,7 +290,7 @@ export function ProjectDialog({
               )}
             </div>
             <p className="text-xs leading-relaxed text-slate-500">
-              {TRACK_OPTIONS.find((t) => t.value === form.track)?.description}
+              {PLACEMENT_OPTIONS.find((o) => o.value === placement)?.description}
             </p>
           </FormSection>
 
@@ -421,54 +443,6 @@ export function ProjectDialog({
                   options={sizeOptions}
                 />
               </FormField>
-            </div>
-          </FormSection>
-
-          {/* プチ改善 / ABテスト（どちらも通常一覧から外れるため排他） */}
-          <FormSection title="専用ビューへ集約">
-            <div className="space-y-2">
-              <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={form.is_petit_improvement}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      is_petit_improvement: e.target.checked,
-                      // 排他: プチ改善をオンにしたらABテストは下ろす
-                      is_ab_test: e.target.checked ? false : prev.is_ab_test,
-                    }))
-                  }
-                  className="mt-0.5 h-4 w-4 cursor-pointer"
-                />
-                <span className="text-sm leading-snug">
-                  <span className="font-medium text-slate-700">プチ改善タスクにする</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    オンにすると通常の一覧から外れ、「プチ改善」ビューに集約されます（メイン開発の裏で少しずつ消化する小さな改善）。
-                  </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-gray-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={form.is_ab_test}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      is_ab_test: e.target.checked,
-                      // 排他: ABテストをオンにしたらプチ改善は下ろす
-                      is_petit_improvement: e.target.checked ? false : prev.is_petit_improvement,
-                    }))
-                  }
-                  className="mt-0.5 h-4 w-4 cursor-pointer"
-                />
-                <span className="text-sm leading-snug">
-                  <span className="font-medium text-slate-700">ABテスト施策にする</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    オンにすると通常の一覧から外れ、「ABテスト」ビューに集約されます（リリース前にABテストで効果を検証する施策）。
-                  </span>
-                </span>
-              </label>
             </div>
           </FormSection>
 
