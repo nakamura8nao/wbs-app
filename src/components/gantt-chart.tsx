@@ -36,6 +36,8 @@ type GanttProject = Project & {
 };
 
 const DAY_WIDTH = 32;
+// 内部の重なり順は 1〜13 に収める（ページのビュー切替バー z-[15] / ヘッダー z-20 より下）。
+// フェーズ編集のモーダルとツールチップだけは、ページの固定ヘッダーより上に出したいので例外。
 const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 48;
 
@@ -181,7 +183,7 @@ function DateHeader({ start, totalDays }: { start: Date; totalDays: number }) {
   }
 
   return (
-    <div className="sticky top-0 z-10 bg-white border-b border-black/10" style={{ height: HEADER_HEIGHT }}>
+    <div className="sticky top-0 z-[12] bg-white border-b border-black/10" style={{ height: HEADER_HEIGHT }}>
       {/* 月 */}
       <div className="flex" style={{ height: HEADER_HEIGHT / 2 }}>
         {months.map((m) => (
@@ -799,7 +801,7 @@ export function GanttChart({
   return (
     <div className="relative overflow-hidden rounded-md border border-black/5 bg-white" style={{ height, ...(scrollButtons ? { maxWidth: "calc(100vw - 3rem)" } : {}) }}>
       {scrollButtons && (
-        <div className="absolute right-2 top-1 z-30 flex gap-1">
+        <div className="absolute right-2 top-1 z-[13] flex gap-1">
           <button
             type="button"
             onClick={() => slideTimeline(-1)}
@@ -822,7 +824,7 @@ export function GanttChart({
         {/* 左ラベル列 */}
         <div className="flex-shrink-0 border-r border-black/10 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ width: LABEL_WIDTH }} ref={labelScrollRef}>
           {/* ヘッダー */}
-          <div className="sticky top-0 z-20 bg-white border-b border-black/10 flex" style={{ height: HEADER_HEIGHT }}>
+          <div className="sticky top-0 z-[12] bg-white border-b border-black/10 flex" style={{ height: HEADER_HEIGHT }}>
             <div className="flex-1 min-w-0 flex flex-col justify-center px-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-black/50">施策 / フェーズ</span>
@@ -988,7 +990,7 @@ export function GanttChart({
 
               {/* 今日の線 */}
               <div
-                className="absolute top-0 w-px bg-[#4a9eff]/50 z-10"
+                className="absolute top-0 w-px bg-[#4a9eff]/50 z-[1]"
                 style={{ left: todayOffset * DAY_WIDTH + DAY_WIDTH / 2, height: rows.length * ROW_HEIGHT }}
               />
 
@@ -1100,7 +1102,7 @@ function SortableGanttPhaseLabel({
       className={cn(
         "group/phase flex items-center border-b border-black/5 hover:bg-blue-50/50 cursor-pointer",
         isEditing && "bg-blue-50/70",
-        isDragging && "opacity-50 z-10 bg-white"
+        isDragging && "opacity-50 z-[2] bg-white"
       )}
       onClick={onEdit}
     >

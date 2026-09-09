@@ -1359,7 +1359,15 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       {/* ガント（タブとは独立。未完了の投資／改善／アイデアの施策を期間で見る） */}
       {ganttOpen && (
         <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
-          <GanttChart projects={activeProjects} members={members} filterMemberId={filterMemberId} />
+          {/* 高さはページがスクロールしない範囲に収める（グローバルヘッダー45 + タブバー60 +
+              余白64 = 約170px）。ページが縦スクロールすると、ガント内の日付ヘッダーが
+              固定ヘッダーの裏に隠れて読めなくなるため。 */}
+          <GanttChart
+            projects={activeProjects}
+            members={members}
+            filterMemberId={filterMemberId}
+            height="calc(100vh - 175px)"
+          />
         </Suspense>
       )}
 
