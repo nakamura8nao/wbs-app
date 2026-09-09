@@ -10,8 +10,8 @@ import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
-import type { Track } from "@/lib/constants";
+import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
+import type { Track, Placement } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
 import {
@@ -104,6 +104,20 @@ type MenuAnchor = Element | { getBoundingClientRect: () => DOMRect };
 const menuItemClasses = "flex items-center gap-2 px-3 py-2 text-sm text-slate-700 outline-none cursor-default select-none data-highlighted:bg-gray-100 data-highlighted:text-slate-900";
 const menuPopupClasses = "min-w-[140px] rounded-lg bg-white py-1 shadow-lg ring-1 ring-black/10 origin-(--transform-origin) transition-[transform,scale,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 
+// 行メニューの「移動」項目。今いるタブは出さない。
+// アイデアはここに出すと項目が多くなりすぎるので、編集ダイアログの「置き場所」から変える。
+const MOVE_TARGETS: {
+  placement: Placement;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+  className: string;
+}[] = [
+  { placement: "investment", label: "投資に移動", icon: Rocket, className: "text-amber-600 data-highlighted:text-amber-700" },
+  { placement: "improvement", label: "改善に移動", icon: Repeat, className: "text-sky-600 data-highlighted:text-sky-700" },
+  { placement: "petit", label: "プチ改善に移動", icon: Sparkles, className: "text-violet-600 data-highlighted:text-violet-700" },
+  { placement: "ab", label: "ABテストに移動", icon: FlaskConical, className: "text-teal-600 data-highlighted:text-teal-700" },
+];
+
 function ProjectActionMenu({
   open,
   onOpenChange,
@@ -111,10 +125,8 @@ function ProjectActionMenu({
   onEdit,
   onDuplicate,
   onDelete,
-  onTogglePetit,
-  petitLabel,
-  onToggleAb,
-  abLabel,
+  project,
+  onMove,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,11 +134,10 @@ function ProjectActionMenu({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onTogglePetit?: () => void;
-  petitLabel?: string;
-  onToggleAb?: () => void;
-  abLabel?: string;
+  project: Project;
+  onMove: (placement: Placement) => void;
 }) {
+  const currentPlacement = placementOf(project);
   return (
     <Menu.Root open={open} onOpenChange={(open) => onOpenChange(open)} modal={false}>
       <Menu.Portal>
@@ -140,18 +151,16 @@ function ProjectActionMenu({
               <Copy size={14} />
               複製
             </Menu.Item>
-            {onTogglePetit && (
-              <Menu.Item className={cn(menuItemClasses, "text-violet-600 data-highlighted:text-violet-700")} onClick={onTogglePetit}>
-                <Sparkles size={14} />
-                {petitLabel}
+            {MOVE_TARGETS.filter((t) => t.placement !== currentPlacement).map((target) => (
+              <Menu.Item
+                key={target.placement}
+                className={cn(menuItemClasses, target.className)}
+                onClick={() => onMove(target.placement)}
+              >
+                <target.icon size={14} />
+                {target.label}
               </Menu.Item>
-            )}
-            {onToggleAb && (
-              <Menu.Item className={cn(menuItemClasses, "text-teal-600 data-highlighted:text-teal-700")} onClick={onToggleAb}>
-                <FlaskConical size={14} />
-                {abLabel}
-              </Menu.Item>
-            )}
+            ))}
             <Menu.Item className={cn(menuItemClasses, "text-red-500 data-highlighted:bg-red-50 data-highlighted:text-red-600")} onClick={onDelete}>
               <Trash2 size={14} />
               削除
@@ -506,8 +515,7 @@ const ProjectRow = memo(function ProjectRow({
   onEdit,
   onDuplicate,
   onDelete,
-  onTogglePetit,
-  onToggleAb,
+  onMove,
   onUpdateField,
   onPhasesChange,
   hidePriority,
@@ -525,8 +533,8 @@ const ProjectRow = memo(function ProjectRow({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onTogglePetit?: () => void;
-  onToggleAb?: () => void;
+  // 行メニューからのタブ移動（投資 / 改善 / プチ改善 / ABテスト）
+  onMove: (placement: Placement) => void;
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   hidePriority?: boolean;
@@ -715,10 +723,8 @@ const ProjectRow = memo(function ProjectRow({
       onEdit={onEdit}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      onTogglePetit={onTogglePetit}
-      petitLabel={project.is_petit_improvement ? "プチ改善から戻す" : "プチ改善に移動"}
-      onToggleAb={onToggleAb}
-      abLabel={project.is_ab_test ? "ABテストから戻す" : "ABテストに移動"}
+      project={project}
+      onMove={onMove}
     />
     {isExpanded && (
       <tr>
@@ -1129,37 +1135,43 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     await reload();
   }, [supabase, reload]);
 
-  // プチ改善／ABテストのフラグ付け外し。付けると通常一覧から外れ、専用ビューへ集約される。
-  // 2つのビューは排他なので、片方を立てるときにもう片方は必ず下ろす。
-  // 移動時は priority をそのまま持ち込むが、移動先ビューの既存タスクと同値だと並び替えできない
-  // スロットになるため、衝突したときだけ移動先ビューの末尾に置き直す。
-  const toggleViewFlag = useCallback(async (project: Project, target: "petit" | "ab") => {
-    const isPetit = target === "petit";
-    const turningOn = isPetit ? !project.is_petit_improvement : !project.is_ab_test;
-    const patch: { is_petit_improvement: boolean; is_ab_test: boolean; priority?: number } = {
-      is_petit_improvement: isPetit ? turningOn : false,
-      is_ab_test: isPetit ? false : turningOn,
+  // 行メニューからのタブ移動。置き場所（投資/改善/プチ改善/ABテスト）を1つ選ぶ操作にそろえる。
+  //   - プチ改善／ABテストは専用フラグ、投資／改善は track に落ちる（placementToFields が対応）
+  //   - 投資へ移すと塊は未割当（投資タブの「未割当」に出る）。投資から出るときは割当を外す
+  //   - priority はそのまま持ち込むが、移動先タブの既存施策と同値だと並び替えできない
+  //     スロットになるため、衝突したときだけ移動先の末尾に置き直す
+  const moveProject = useCallback(async (project: Project, placement: Placement) => {
+    const fields = placementToFields(placement, project.track);
+    const patch: {
+      track: Track;
+      is_petit_improvement: boolean;
+      is_ab_test: boolean;
+      investment_program_id: string | null;
+      priority?: number;
+    } = {
+      ...fields,
+      investment_program_id: placement === "investment" ? project.investment_program_id : null,
     };
-    if (turningOn) {
-      const used = projects
-        .filter((p) => (isPetit ? p.is_petit_improvement : p.is_ab_test) && p.status !== "完了" && p.id !== project.id)
-        .map((p) => p.priority);
-      if (used.includes(project.priority)) {
-        patch.priority = Math.max(...used, project.priority) + 1;
-      }
+
+    const inTargetTab = (p: Project) => {
+      if (placement === "petit") return p.is_petit_improvement;
+      if (placement === "ab") return p.is_ab_test;
+      return !p.is_petit_improvement && !p.is_ab_test && p.track === placement;
+    };
+    const used = projects
+      .filter((p) => inTargetTab(p) && p.status !== "完了" && p.id !== project.id)
+      .map((p) => p.priority);
+    if (used.includes(project.priority)) {
+      patch.priority = Math.max(...used, project.priority) + 1;
     }
-    await supabase.from("projects").update(patch as never).eq("id", project.id);
+
+    const { error } = await supabase.from("projects").update(patch as never).eq("id", project.id);
+    if (error) {
+      console.error("施策の移動に失敗", { id: project.id, patch, error });
+      alert(`移動できませんでした: ${error.message}`);
+    }
     await reload();
   }, [supabase, reload, projects]);
-
-  const handleTogglePetit = useCallback(
-    (project: Project) => toggleViewFlag(project, "petit"),
-    [toggleViewFlag]
-  );
-  const handleToggleAb = useCallback(
-    (project: Project) => toggleViewFlag(project, "ab"),
-    [toggleViewFlag]
-  );
 
   // 各ビューのD&D完了時：並び順を priority に反映して保存。
   // ビューをまたいで影響しないよう、そのビュー（塊）の施策が元々持つ priority 値を
@@ -1283,8 +1295,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 onEdit={() => setEditingProject(project)}
                 onDuplicate={() => handleDuplicate(project)}
                 onDelete={() => handleDelete(project.id)}
-                onTogglePetit={() => handleTogglePetit(project)}
-                onToggleAb={() => handleToggleAb(project)}
+                onMove={(placement) => moveProject(project, placement)}
                 onUpdateField={handleUpdateField}
                 onPhasesChange={reloadPhaseAssignees}
                 hidePriority
@@ -1577,8 +1588,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                             onEdit={() => setEditingProject(project)}
                             onDuplicate={() => handleDuplicate(project)}
                             onDelete={() => handleDelete(project.id)}
-                            onTogglePetit={() => handleTogglePetit(project)}
-                            onToggleAb={() => handleToggleAb(project)}
+                            onMove={(placement) => moveProject(project, placement)}
                             onUpdateField={handleUpdateField}
                             onPhasesChange={reloadPhaseAssignees}
                             hidePriority
@@ -1629,8 +1639,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     onEdit={() => setEditingProject(project)}
                     onDuplicate={() => handleDuplicate(project)}
                     onDelete={() => handleDelete(project.id)}
-                    onTogglePetit={() => handleTogglePetit(project)}
-                    onToggleAb={() => handleToggleAb(project)}
+                    onMove={(placement) => moveProject(project, placement)}
                     onUpdateField={handleUpdateField}
                     onPhasesChange={reloadPhaseAssignees}
                     hidePriority
@@ -1711,8 +1720,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onEdit={() => setEditingProject(project)}
                           onDuplicate={() => handleDuplicate(project)}
                           onDelete={() => handleDelete(project.id)}
-                          onTogglePetit={() => handleTogglePetit(project)}
-                          onToggleAb={() => handleToggleAb(project)}
+                          onMove={(placement) => moveProject(project, placement)}
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
@@ -1784,8 +1792,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onEdit={() => setEditingProject(project)}
                           onDuplicate={() => handleDuplicate(project)}
                           onDelete={() => handleDelete(project.id)}
-                          onTogglePetit={() => handleTogglePetit(project)}
-                          onToggleAb={() => handleToggleAb(project)}
+                          onMove={(placement) => moveProject(project, placement)}
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
