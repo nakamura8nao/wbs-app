@@ -24,22 +24,28 @@ create index if not exists investment_programs_sort_order_idx
 
 alter table public.investment_programs enable row level security;
 
--- 施策と同じくチーム全員で見て編集する運用なので、ログインユーザーに全操作を許可する
+-- 施策と同じくチーム全員で見て編集する運用なので、ログインユーザーに全操作を許可する。
+-- create policy に if not exists が無く、再実行すると落ちて全体がロールバックされるため、
+-- 何度流しても同じ状態になるよう毎回作り直す。
+drop policy if exists "authenticated read investment_programs" on public.investment_programs;
 create policy "authenticated read investment_programs"
   on public.investment_programs for select
   to authenticated
   using (true);
 
+drop policy if exists "authenticated insert investment_programs" on public.investment_programs;
 create policy "authenticated insert investment_programs"
   on public.investment_programs for insert
   to authenticated
   with check (true);
 
+drop policy if exists "authenticated update investment_programs" on public.investment_programs;
 create policy "authenticated update investment_programs"
   on public.investment_programs for update
   to authenticated
   using (true);
 
+drop policy if exists "authenticated delete investment_programs" on public.investment_programs;
 create policy "authenticated delete investment_programs"
   on public.investment_programs for delete
   to authenticated
@@ -60,4 +66,8 @@ create index if not exists projects_investment_program_id_idx
 
 -- 初期分類: 優先順が未決定＝まだ実施が確定していないので「アイデア」に寄せる。
 -- それ以外は既存機能の改善が大半なので default の improvement のまま。投資は運用側で振り分ける。
-update projects set track = 'idea' where priority_undecided = true;
+-- 再実行で運用中の分類を巻き戻さないよう、既定値のままの施策だけを対象にする
+update projects
+  set track = 'idea'
+  where priority_undecided = true
+    and track = 'improvement';
