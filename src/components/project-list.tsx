@@ -102,7 +102,14 @@ const statusConfig = (status: string) => {
 type MenuAnchor = Element | { getBoundingClientRect: () => DOMRect };
 
 const menuItemClasses = "flex items-center gap-2 px-3 py-2 text-sm text-slate-700 outline-none cursor-default select-none data-highlighted:bg-gray-100 data-highlighted:text-slate-900";
-const menuPopupClasses = "min-w-[140px] rounded-lg bg-white py-1 shadow-lg ring-1 ring-black/10 origin-(--transform-origin) transition-[transform,scale,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+// メンバー一覧のように項目が多いと、吹き出しが画面の外まで伸びて上端が切れ、
+// 隠れた項目を選べなくなる。Base UI が positioner に置く --available-height で
+// 収まる高さに制限し、あふれる分はポップアップ内でスクロールさせる。
+// 高さは Tailwind の任意値ではなく style で当てる（min() と CSS変数の組み合わせが
+// クラス生成に乗らないと無言で効かなくなるため）。
+const menuPopupStyle = { maxHeight: "min(24rem, var(--available-height))" };
+
+const menuPopupClasses = "min-w-[140px] overflow-y-auto overscroll-contain rounded-lg bg-white py-1 shadow-lg ring-1 ring-black/10 origin-(--transform-origin) transition-[transform,scale,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 
 // 行メニューの「移動」項目。今いるタブは出さない。
 // アイデアはここに出すと項目が多くなりすぎるので、編集ダイアログの「置き場所」から変える。
@@ -142,7 +149,7 @@ function ProjectActionMenu({
     <Menu.Root open={open} onOpenChange={(open) => onOpenChange(open)} modal={false}>
       <Menu.Portal>
         <Menu.Positioner anchor={anchor} side="bottom" align="start" sideOffset={4} className="z-[60]">
-          <Menu.Popup className={menuPopupClasses}>
+          <Menu.Popup className={menuPopupClasses} style={menuPopupStyle}>
             <Menu.Item className={menuItemClasses} onClick={onEdit}>
               <Pencil size={14} />
               編集
@@ -291,7 +298,7 @@ function InlineMenuCell<T extends string>({
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
-          <Menu.Popup className={menuPopupClasses}>
+          <Menu.Popup className={menuPopupClasses} style={menuPopupStyle}>
             {options.map((opt) => (
               <Menu.Item
                 key={opt.value}
@@ -353,7 +360,7 @@ function InlineDateCell({
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
-          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")}>
+          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")} style={menuPopupStyle}>
             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
               <input
                 type="date"
@@ -438,7 +445,7 @@ function MustDateCell({
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
-          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")}>
+          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")} style={menuPopupStyle}>
             <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
               <span className="text-xs font-medium text-slate-500">公開マスト期日</span>
               <input
