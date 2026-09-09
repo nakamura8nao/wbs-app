@@ -146,6 +146,13 @@
     transition: opacity 150ms;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,.1);
   }
+  /* 中央寄せだとコンテナ左端に近いラベルで吹き出しが外へはみ出し、
+     ダイアログ（overflow-y: auto）に切られて読めなくなる。
+     その場合はアンカーの左端に合わせて右へ開かせる。 */
+  [data-tooltip][data-tooltip-align="start"]::after {
+    left: 0;
+    transform: none;
+  }
   [data-tooltip]:hover::after {
     opacity: 1;
   }
