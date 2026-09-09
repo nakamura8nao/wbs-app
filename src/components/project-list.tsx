@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { STATUS_OPTIONS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
+import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
 import type { Track } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
@@ -77,6 +77,8 @@ const ascendingSlots = (values: number[]) => {
 
 const statusConfig = (status: string) => {
   switch (status) {
+    case AB_TEST_STATUS:
+      return { badge: "bg-teal-50 text-teal-700", dot: "bg-teal-500" };
     case "完了":
       return { badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
     case "公開待ち":
@@ -303,10 +305,13 @@ function InlineMenuCell<T extends string>({
 function InlineDateCell({
   value,
   tentative,
+  abTesting,
   onChange,
 }: {
   value: string | null;
   tentative: boolean;
+  // ABテスト中は日付そのものより「いつから走っているか」が知りたいので表示を差し替える
+  abTesting?: boolean;
   onChange: (value: string | null, tentative: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -328,7 +333,12 @@ function InlineDateCell({
   return (
     <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
       <Menu.Trigger className={inlineCellClasses} onClick={(e) => e.stopPropagation()}>
-        {value ? (
+        {abTesting ? (
+          <span className="text-xs font-medium text-teal-700">
+            {AB_TEST_STATUS}
+            {value ? `（${value}〜）` : ""}
+          </span>
+        ) : value ? (
           tentative ? <span className="text-xs text-slate-400">{value} 仮</span> : value
         ) : "-"}
       </Menu.Trigger>
@@ -477,6 +487,7 @@ function ReleaseDateCell({
           <InlineDateCell
             value={project.target_date}
             tentative={project.target_date_tentative}
+            abTesting={project.status === AB_TEST_STATUS}
             onChange={(v, tentative) => onUpdateField(project.id, { target_date: v, target_date_tentative: tentative })}
           />
         </span>
@@ -502,6 +513,7 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority,
   hideProgress,
   showProposedDate,
+  statusOptions,
   showPetitBadge,
   showAbBadge,
   members,
@@ -521,6 +533,8 @@ const ProjectRow = memo(function ProjectRow({
   // 公開済みビュー用。完了済みの行では進行状況（⏸/▶/✅）が意味を持たないので出さない
   hideProgress?: boolean;
   showProposedDate?: boolean;
+  // ステータスの選択肢。既定は STATUS_OPTIONS で、ABテストタブだけ AB_STATUS_OPTIONS を渡す
+  statusOptions?: readonly string[];
   showPetitBadge?: boolean;
   showAbBadge?: boolean;
   members: Member[];
@@ -646,7 +660,7 @@ const ProjectRow = memo(function ProjectRow({
       <td className="w-24 py-3 px-4 whitespace-nowrap">
         <InlineMenuCell
           value={project.status}
-          options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+          options={(statusOptions ?? STATUS_OPTIONS).map((s) => ({ value: s, label: s }))}
           onChange={(v) => onUpdateField(project.id, { status: v })}
         >
           <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", statusConfig(project.status).badge)}>
@@ -852,6 +866,12 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     [...projects.filter((p) => p.is_ab_test && p.status !== "完了" && filterProject(p))]
       .sort((a, b) => a.priority - b.priority),
     [projects, filterProject]
+  );
+
+  // ABテスト実施中の件数（ステータスが「ABテスト中」の施策）
+  const abTestingCount = useMemo(
+    () => abProjects.filter((p) => p.status === AB_TEST_STATUS).length,
+    [abProjects]
   );
 
   // 3分類（投資/改善/アイデア）ビュー。母集団は activeProjects（未完了・プチ改善/ABテスト以外）。
@@ -1099,7 +1119,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   };
 
   const handleUpdateField = useCallback(async (id: string, patch: Partial<Project>) => {
-    await supabase.from("projects").update(patch as never).eq("id", id);
+    const { error } = await supabase.from("projects").update(patch as never).eq("id", id);
+    // 失敗を黙って捨てると reload で元の値に戻るだけになり、「押しても変わらない」に見えて
+    // 原因（制約違反・権限など）が分からなくなるので、その場で出す。
+    if (error) {
+      console.error("施策の更新に失敗", { id, patch, error });
+      alert(`保存できませんでした: ${error.message}`);
+    }
     await reload();
   }, [supabase, reload]);
 
@@ -1299,6 +1325,15 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                   >
                     {tab.icon && <tab.icon size={14} />}
                     {tab.label}
+                    {/* 実施中のABテスト数はタブを開かなくても見たいのでバッジで出す（0件のときは出さない） */}
+                    {tab.key === "ab" && abTestingCount > 0 && (
+                      <span
+                        className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                        title={`ABテスト中の施策 ${abTestingCount}件`}
+                      >
+                        {abTestingCount}
+                      </span>
+                    )}
                   </button>
                 ))}
               </Fragment>
@@ -1754,6 +1789,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
+                          statusOptions={AB_STATUS_OPTIONS}
                           members={members}
                         />
                       ))}

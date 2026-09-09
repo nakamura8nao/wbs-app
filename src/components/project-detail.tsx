@@ -9,7 +9,7 @@ import { PhasePanel } from "@/components/phase-panel";
 import { ProjectDialog } from "@/components/project-dialog";
 import { NotesContent } from "@/components/notes-content";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { SIZE_OPTIONS, placementOf, placementLabel } from "@/lib/constants";
+import { SIZE_OPTIONS, AB_TEST_STATUS, placementOf, placementLabel } from "@/lib/constants";
 import type { Project, Member, ProjectFormData, InvestmentProgram } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,8 @@ const sizeLabel = (value: string | null) => {
 
 const statusConfig = (status: string) => {
   switch (status) {
+    case AB_TEST_STATUS:
+      return { badge: "bg-teal-50 text-teal-700", dot: "bg-teal-500" };
     case "完了":
       return { badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
     case "公開待ち":

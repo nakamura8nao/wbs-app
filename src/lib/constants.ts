@@ -38,6 +38,8 @@ export function getGroupLv3Options(lv2: string) {
   return GROUP_LV3_OPTIONS.filter((o) => o.parent === lv2);
 }
 
+// DB側に projects_status_check（許可値の列挙）があるので、ここを増やすときは
+// supabase/migrations の制約も合わせて更新する（片方だけだと保存が制約違反で落ちる）。
 export const STATUS_OPTIONS = [
   "未着手",
   "調査",
@@ -48,6 +50,17 @@ export const STATUS_OPTIONS = [
   "公開待ち",
   "完了",
 ] as const;
+
+// ABテストタブ限定のステータス。公開して効果を測っている間の状態で、
+// この状態のときは公開目安の欄に「ABテスト中（公開目安日〜）」と出す。
+// 通常のステータス選択肢には入れず、ABテストタブと、その施策を編集するときだけ出す。
+export const AB_TEST_STATUS = "ABテスト中";
+
+export const AB_STATUS_OPTIONS: readonly string[] = [
+  ...STATUS_OPTIONS.filter((s) => s !== "完了"),
+  AB_TEST_STATUS,
+  "完了",
+];
 
 export const PROGRESS_OPTIONS = [
   { value: "paused", label: "⏸️" },

@@ -17,6 +17,8 @@ import {
   getGroupLv2Options,
   getGroupLv3Options,
   STATUS_OPTIONS,
+  AB_STATUS_OPTIONS,
+  AB_TEST_STATUS,
   PROGRESS_OPTIONS,
   SIZE_OPTIONS,
   PLACEMENT_OPTIONS,
@@ -203,17 +205,20 @@ export function ProjectDialog({
     });
   };
 
+  // 置き場所（表示タブ）は form の track / プチ改善 / ABテストから求まるので、専用の state は持たない
+  const placement = placementOf(form);
+  // 「ABテスト中」はABテストタブ限定のステータス。ABテストに置く施策と、
+  // すでにその状態の施策を編集するときだけ選択肢に出す（勝手に別の値へ変わらないように）
+  const useAbStatuses = placement === "ab" || form.status === AB_TEST_STATUS;
+  const statusOptions = (useAbStatuses ? AB_STATUS_OPTIONS : STATUS_OPTIONS).map((s) => ({ value: s, label: s }));
   const sizeOptions = [
     { value: "", label: "未設定" },
     ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label })),
   ];
-  const statusOptions = STATUS_OPTIONS.map((s) => ({ value: s, label: s }));
   const progressOptions = PROGRESS_OPTIONS.map((p) => ({
     value: p.value,
     label: `${p.label} ${p.value}`,
   }));
-  // 置き場所（表示タブ）は form の track / プチ改善 / ABテストから求まるので、専用の state は持たない
-  const placement = placementOf(form);
   const placementOptions = PLACEMENT_OPTIONS.map((o) => ({
     value: o.value,
     label: o.label,
