@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { SIZE_OPTIONS, STATUS_OPTIONS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
+import { STATUS_OPTIONS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT } from "@/lib/constants";
 import type { Track } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
@@ -64,11 +64,6 @@ const VIEW_TAB_GROUPS: TabDef[][] = [
   [{ key: "released", label: "公開済み", title: "公開（完了）した施策" }],
   [{ key: "idea", label: "アイデア", icon: Lightbulb, title: "実施が未確定の検討案や、将来的な施策の候補" }],
 ];
-
-const sizeLabel = (value: string | null) => {
-  if (!value) return "-";
-  return SIZE_OPTIONS.find((s) => s.value === value)?.label ?? value;
-};
 
 // 並び替えスロット。同じ priority が複数あると順序を表現できず、D&Dしても同じ値が
 // 書き戻されて行が元に戻ってしまう。昇順に並べたうえで厳密な増加列に補正する（[1,1,1] → [1,2,3]）。
@@ -237,11 +232,6 @@ const diffDays = (start: string, end: string): number => {
   const msPerDay = 86400000;
   return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / msPerDay);
 };
-
-const sizeOptionsWithNone = [
-  { value: "", label: <span className="text-slate-400">未設定</span> },
-  ...SIZE_OPTIONS.map((s) => ({ value: s.value, label: s.label as React.ReactNode })),
-];
 
 const progressOptions = PROGRESS_OPTIONS.map((p) => ({
   value: p.value,
@@ -510,7 +500,7 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField,
   onPhasesChange,
   hidePriority,
-  hideSize,
+  hideProgress,
   showProposedDate,
   showPetitBadge,
   showAbBadge,
@@ -528,7 +518,8 @@ const ProjectRow = memo(function ProjectRow({
   onUpdateField: (id: string, patch: Partial<Project>) => void;
   onPhasesChange?: () => void;
   hidePriority?: boolean;
-  hideSize?: boolean;
+  // 公開済みビュー用。完了済みの行では進行状況（⏸/▶/✅）が意味を持たないので出さない
+  hideProgress?: boolean;
   showProposedDate?: boolean;
   showPetitBadge?: boolean;
   showAbBadge?: boolean;
@@ -561,12 +552,12 @@ const ProjectRow = memo(function ProjectRow({
   }, []);
 
   // 展開パネルを表で全幅に伸ばすための列数。表示条件付きの列を足し引きして数える。
-  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 進行 / 備考 / ケバブ = 9
+  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 備考 / ケバブ = 8
   const colCount =
-    9 +
+    8 +
     (sortable ? 1 : 0) +
     (hidePriority ? 0 : 1) +
-    (hideSize ? 0 : 1) +
+    (hideProgress ? 0 : 1) +
     (showProposedDate ? 2 : 0);
 
   return (
@@ -676,26 +667,17 @@ const ProjectRow = memo(function ProjectRow({
             : "-"}
         </td>
       )}
-      {!hideSize && (
-        <td className="w-20 py-3 px-4 text-xs text-body whitespace-nowrap">
+      {!hideProgress && (
+        <td className="w-8 py-3 px-2 text-center text-sm">
           <InlineMenuCell
-            value={project.size ?? ""}
-            options={sizeOptionsWithNone}
-            onChange={(v) => onUpdateField(project.id, { size: v || null })}
+            value={project.progress}
+            options={progressOptions}
+            onChange={(v) => onUpdateField(project.id, { progress: v })}
           >
-            {project.size ? sizeLabel(project.size) : <EmptyPlaceholder />}
+            <ProgressIcon value={project.progress} />
           </InlineMenuCell>
         </td>
       )}
-      <td className="w-8 py-3 px-2 text-center text-sm">
-        <InlineMenuCell
-          value={project.progress}
-          options={progressOptions}
-          onChange={(v) => onUpdateField(project.id, { progress: v })}
-        >
-          <ProgressIcon value={project.progress} />
-        </InlineMenuCell>
-      </td>
       <td className="py-3 px-4 text-xs text-body whitespace-pre-wrap break-words w-[300px] max-w-[300px]">
         <InlineNotesCell
           value={project.notes ?? ""}
@@ -1280,7 +1262,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 onUpdateField={handleUpdateField}
                 onPhasesChange={reloadPhaseAssignees}
                 hidePriority
-                hideSize
                 members={members}
               />
             ))}
@@ -1558,7 +1539,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                             onUpdateField={handleUpdateField}
                             onPhasesChange={reloadPhaseAssignees}
                             hidePriority
-                            hideSize
                             members={members}
                           />
                         ))}
@@ -1586,15 +1566,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
                 <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
                 <th scope="col" className="w-28 py-3 px-4 text-right text-xs font-medium text-slate-500 whitespace-nowrap" data-tooltip="起案日と公開日が同日の場合は1日">起案日からの日数</th>
-                <th scope="col" className="w-20 py-3 px-4 text-left text-xs font-medium text-slate-500 cursor-help" data-tooltip="エンジニア対応見積工数。アウトプット量 = 規模 × 施策数 とし、アウトプット量の推移を確認するために使用する。">規模</th>
-                <th scope="col" className="w-8 py-3 px-2"></th>
                 <th scope="col" className="w-10 py-3 px-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {releasedProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-base text-slate-500">
+                  <td colSpan={9} className="py-16 text-center text-base text-slate-500">
                     公開済みの施策はありません
                   </td>
                 </tr>
@@ -1613,6 +1591,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     onUpdateField={handleUpdateField}
                     onPhasesChange={reloadPhaseAssignees}
                     hidePriority
+                    hideProgress
                     showProposedDate
                     showPetitBadge
                     showAbBadge
@@ -1694,7 +1673,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          hideSize
                           members={members}
                         />
                       ))}
@@ -1768,7 +1746,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          hideSize
                           members={members}
                         />
                       ))}
