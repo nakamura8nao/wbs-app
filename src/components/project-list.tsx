@@ -6,7 +6,7 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Lightbulb, Target, CalendarClock, Plus, ChartGantt } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Target, CalendarClock, Plus, ChartGantt } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -41,11 +41,11 @@ type Props = {
   members: Member[];
 };
 
-// investment / improvement / idea は施策の3分類（MECE）ビュー。
+// investment / improvement は施策のトラック（MECE）ビュー。
 // petit / ab は運用上の受け皿、released は公開済みの記録。
-type ViewMode = "investment" | "improvement" | "petit" | "ab" | "released" | "idea";
+type ViewMode = "investment" | "improvement" | "petit" | "ab" | "released";
 
-// タブの並び。「取り組み中の4本 ｜ 公開済み ｜ アイデア」の3ブロックで、
+// タブの並び。「取り組み中の4本 ｜ 公開済み」の2ブロックで、
 // ブロックの切れ目に区切り線を入れる。
 type TabDef = {
   key: ViewMode;
@@ -62,7 +62,6 @@ const VIEW_TAB_GROUPS: TabDef[][] = [
     { key: "ab", label: "ABテスト", icon: FlaskConical, title: "リリース前にABテストで効果を検証する施策" },
   ],
   [{ key: "released", label: "公開済み", title: "公開（完了）した施策" }],
-  [{ key: "idea", label: "アイデア", icon: Lightbulb, title: "実施が未確定の検討案や、将来的な施策の候補" }],
 ];
 
 // 並び替えスロット。同じ priority が複数あると順序を表現できず、D&Dしても同じ値が
@@ -887,7 +886,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     [abProjects]
   );
 
-  // 3分類（投資/改善/アイデア）ビュー。母集団は activeProjects（未完了・プチ改善/ABテスト以外）。
+  // 投資／改善ビュー。母集団は activeProjects（未完了・プチ改善/ABテスト以外）。
   //   - 完了（公開済み）は「公開済み」タブへ卒業させる
   //   - プチ改善／ABテストはそれぞれの専用タブに集約したまま
   // これで各施策はどのタブにも高々1回しか現れない。
@@ -903,7 +902,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
   const investmentProjects = useMemo(() => trackProjects.get("investment") ?? [], [trackProjects]);
   const improvementProjects = useMemo(() => trackProjects.get("improvement") ?? [], [trackProjects]);
-  const ideaProjects = useMemo(() => trackProjects.get("idea") ?? [], [trackProjects]);
 
   // 投資ビュー：塊（プロジェクト）ごとに施策をぶら下げる。塊が空でもカードは出す
   // （成功条件と期日を置く器なので、施策0件でも見えていた方がよい）。
@@ -1221,10 +1219,9 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
   const handlePetitDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, petitProjects);
   const handleAbDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, abProjects);
-  // 3分類ビューの並び替え。母集団はメイン一覧と同じなので、そのビューが持つ priority 値の
-  // 昇順スロットを詰め替える（他トラックの priority には触らない）。
+  // 改善ビューの並び替え。そのビューが持つ priority 値の昇順スロットを詰め替える
+  // （他のタブの priority には触らない）。
   const handleImprovementDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, improvementProjects);
-  const handleIdeaDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, ideaProjects);
 
   // 投資ビューの塊（プロジェクト）の並び替え。カードの表示順 = sort_order を 1..n で振り直す。
   const handleProgramDragEnd = async (event: DragEndEvent) => {
@@ -1260,7 +1257,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   };
 
   const theadClasses = "border-b border-slate-200 bg-gray-50";
-  // 3分類ビュー（投資/改善/アイデア）の表ヘッダー。
+  // 投資／改善ビューの表ヘッダー。
   // 列順は ProjectRow の td と対応させる（drag → タイトル … 状態 → 進行 → 備考 → メニュー）。
   // 分類とプロジェクトは行に出さない（タブと塊の見出しで分かるので、行では冗長）。
   const trackTableHead = ({ drag = false }: { drag?: boolean }) => (
@@ -1547,70 +1544,63 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         </div>
       )}
 
-      {/* 3分類ビュー：継続改善・運用強化 / アイデア（どちらもフラットな1本の表） */}
-      {!ganttOpen && (viewMode === "improvement" || viewMode === "idea") && (() => {
-        const isIdea = viewMode === "idea";
-        const items = isIdea ? ideaProjects : improvementProjects;
-        const option = TRACK_OPTIONS.find((t) => t.value === (isIdea ? "idea" : "improvement"))!;
-        const tone = isIdea
-          ? { border: "border-slate-300", bg: "bg-slate-100", title: "text-slate-800", sub: "text-slate-600", icon: "text-slate-500" }
-          : { border: "border-sky-200", bg: "bg-sky-50", title: "text-sky-900", sub: "text-sky-700", icon: "text-sky-500" };
-        const Icon = isIdea ? Lightbulb : Repeat;
-        return (
-          <div className="space-y-4">
-            <div className={cn("rounded-xl border px-5 py-3", tone.border, tone.bg)}>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Icon size={16} className={tone.icon} />
-                <h3 className={cn("text-sm font-semibold", tone.title)}>{option.label}</h3>
-                <span className={cn("text-xs", tone.sub)}>{items.length}件</span>
-                <span className={cn("text-xs opacity-70", tone.sub)}>{option.description}</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
-              <table className="w-full text-sm">
-                {trackTableHead({ drag: true })}
-                {items.length === 0 ? (
-                  <tbody>
-                    <tr>
-                      <td colSpan={10} className="py-16 text-center text-base text-slate-500">
-                        該当する施策はありません。施策を編集して分類を変えるとこのタブに入ります。
-                      </td>
-                    </tr>
-                  </tbody>
-                ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={isIdea ? handleIdeaDragEnd : handleImprovementDragEnd}
-                  >
-                    <SortableContext items={items.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                      <tbody className="divide-y divide-slate-100">
-                        {items.map((project) => (
-                          <SortableProjectRow
-                            key={project.id}
-                            project={project}
-                            isExpanded={expandedProjectId === project.id}
-                            onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                            onEdit={() => setEditingProject(project)}
-                            onDuplicate={() => handleDuplicate(project)}
-                            onDelete={() => handleDelete(project.id)}
-                            onMove={(placement) => moveProject(project, placement)}
-                            onUpdateField={handleUpdateField}
-                            onPhasesChange={reloadPhaseAssignees}
-                            hidePriority
-                            members={members}
-                          />
-                        ))}
-                      </tbody>
-                    </SortableContext>
-                  </DndContext>
-                )}
-              </table>
+      {/* 継続改善・運用強化ビュー（フラットな1本の表） */}
+      {!ganttOpen && viewMode === "improvement" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Repeat size={16} className="text-sky-500" />
+              <h3 className="text-sm font-semibold text-sky-900">継続改善・運用強化</h3>
+              <span className="text-xs text-sky-700">{improvementProjects.length}件</span>
+              <span className="text-xs text-sky-700/70">
+                既存機能の価値を高め、日々の成果や業務効率を底上げする施策
+              </span>
             </div>
           </div>
-        );
-      })()}
+
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <table className="w-full text-sm">
+              {trackTableHead({ drag: true })}
+              {improvementProjects.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={10} className="py-16 text-center text-base text-slate-500">
+                      該当する施策はありません。施策を編集して分類を変えるとこのタブに入ります。
+                    </td>
+                  </tr>
+                </tbody>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleImprovementDragEnd}
+                >
+                  <SortableContext items={improvementProjects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                    <tbody className="divide-y divide-slate-100">
+                      {improvementProjects.map((project) => (
+                        <SortableProjectRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onMove={(placement) => moveProject(project, placement)}
+                          onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
+                          hidePriority
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 公開済みビュー */}
       {!ganttOpen && viewMode === "released" && (
