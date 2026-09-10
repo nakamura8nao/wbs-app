@@ -222,7 +222,7 @@ function StackedAreaChart({
 
   return (
     <div className="relative overflow-x-auto">
-      <svg width={width} height={height} className="block">
+      <svg width={width} height={height} className="block cursor-crosshair">
         {/* 土日祝の背景 */}
         {points.map((p, i) => {
           const holiday = isHoliday(p.date);
@@ -238,6 +238,18 @@ function StackedAreaChart({
             />
           );
         })}
+
+        {/* ホバー中の列。どこを見ているかが分かるように背景を敷く */}
+        {hover !== null && (
+          <rect
+            x={PAD.left + hover.i * DAY_WIDTH}
+            y={PAD.top}
+            width={DAY_WIDTH}
+            height={chartH}
+            fill="#0f172a"
+            fillOpacity={0.06}
+          />
+        )}
 
         {/* y軸グリッド */}
         {ticks.map((v) => (
@@ -311,11 +323,13 @@ function StackedAreaChart({
               textAnchor="middle"
               className={cn(
                 "text-[10px] tabular-nums",
-                p.date === today
-                  ? "fill-red-500"
-                  : isHoliday(p.date) || isWeekend(p.date)
-                    ? "fill-slate-300"
-                    : "fill-slate-400"
+                hover?.i === i
+                  ? "fill-slate-700 font-semibold"
+                  : p.date === today
+                    ? "fill-red-500"
+                    : isHoliday(p.date) || isWeekend(p.date)
+                      ? "fill-slate-300"
+                      : "fill-slate-400"
               )}
             >
               {fmtMD(p.date)}
@@ -323,14 +337,30 @@ function StackedAreaChart({
           ) : null
         )}
 
-        {/* ホバー領域 */}
+        {/* ホバー中の日の各層に点を打つ（どの高さを読んでいるかを示す） */}
+        {hover !== null &&
+          PLACEMENT_ORDER.map((key) =>
+            points[hover.i].counts[key] > 0 ? (
+              <circle
+                key={`dot-${key}`}
+                cx={x(hover.i)}
+                cy={y(bounds[hover.i][key].upper)}
+                r={3.5}
+                fill={PLACEMENT_META[key].color}
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            ) : null
+          )}
+
+        {/* ホバー領域。日付ラベルの帯まで含めて、狙いやすい幅で取る */}
         {points.map((p, i) => (
           <rect
             key={`hit-${p.date}`}
             x={PAD.left + i * DAY_WIDTH}
             y={PAD.top}
             width={DAY_WIDTH}
-            height={chartH}
+            height={chartH + 22}
             fill="transparent"
             onMouseEnter={(e) => {
               // カーソル追従だと本数が多いときに揺れるので、その日の列に固定する
@@ -563,6 +593,7 @@ export function WorkloadView({
           nameOf={nameOf}
         />
         <p className="mt-2 text-[11px] text-black/35">
+          日付の上にカーソルを合わせると、その日の内訳が出ます。
           フェーズに開始日／終了日が入っている施策だけを数えています（施策単位・工数は未考慮）。
           日付が入っていないフェーズはこのグラフに出ません。
         </p>
