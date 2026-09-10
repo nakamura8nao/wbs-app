@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MemberSelect } from "@/components/member-select";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PHASE_STATUS_OPTIONS } from "@/lib/constants";
+import { DEFAULT_PHASES } from "@/lib/phase-templates";
 import type { Member, Phase, PhaseFormData, Project } from "@/lib/types/models";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, ArrowRight, GripVertical, StickyNote } from "lucide-react";
@@ -27,36 +28,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
-// role: "director" | "designer" | "engineer" で施策の担当者を自動割り当て
-const DEFAULT_PHASES: { name: string; role?: "director" | "designer" | "engineer" }[] = [
-  { name: "ディレクターキックオフ", role: "director" },
-  { name: "要求定義_作成", role: "director" },
-  { name: "要求定義_レビュー", role: "director" },
-  { name: "要求定義_修正〜fix", role: "director" },
-  { name: "要求定義_須川さん確認", role: "director" },
-  { name: "デザイン_作成", role: "designer" },
-  { name: "デザイン_レビュー", role: "designer" },
-  { name: "デザイン_修正〜fix", role: "designer" },
-  { name: "デザイン_須川さん確認", role: "designer" },
-  { name: "要件定義_作成", role: "engineer" },
-  { name: "要件定義_レビュー", role: "engineer" },
-  { name: "要件定義_修正〜fix", role: "engineer" },
-  { name: "設計_作成", role: "engineer" },
-  { name: "設計_レビュー", role: "engineer" },
-  { name: "設計_修正〜fix", role: "engineer" },
-  { name: "実装_PR1", role: "engineer" },
-  { name: "実装_PR2", role: "engineer" },
-  { name: "実装_PR3", role: "engineer" },
-  { name: "実装_PR4", role: "engineer" },
-  { name: "実装_PR5", role: "engineer" },
-  { name: "テスト_仕様書作成", role: "engineer" },
-  { name: "テスト_実施", role: "director" },
-  { name: "テスト_修正~fix", role: "engineer" },
-  { name: "公開前_須川さん確認", role: "director" },
-  { name: "公開前_事業部確認", role: "director" },
-  { name: "公開(BETA解除)", role: "engineer" },
-];
 
 const EMPTY_FORM: PhaseFormData = {
   name: "",

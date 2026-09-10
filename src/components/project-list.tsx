@@ -13,6 +13,8 @@ const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ 
 import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
 import type { Track, Placement } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
+import { PhaseAssigneeSyncDialog } from "@/components/phase-assignee-sync-dialog";
+import { buildPhaseSyncCandidates, type PhaseSyncCandidate, type RoleAssignees } from "@/lib/phase-templates";
 import type { Project, Member, ProjectFormData, InvestmentProgram, InvestmentProgramFormData } from "@/lib/types/models";
 import {
   DndContext,
@@ -830,6 +832,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<InvestmentProgram | null>(null);
+  // 施策の担当者を変えたあと、同名フェーズの担当者を追随させるか確認する
+  const [phaseSync, setPhaseSync] = useState<{
+    projectTitle: string;
+    candidates: PhaseSyncCandidate[];
+  } | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   // ガントはタブ（施策の分類）とは別軸の見方なので、タブとは独立した表示トグルで持つ
   const [ganttOpen, setGanttOpen] = useState(false);
@@ -853,6 +860,19 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // それぞれ専用タブに集約する。2つのフラグは排他運用（片方を立てるともう片方は下りる）。
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && !p.is_petit_improvement && !p.is_ab_test && filterProject(p)), [projects, filterProject]);
+
+  // ガントはタブとは独立した見方なので、プチ改善／ABテストも含めて未完了の施策をすべて出す。
+  // 優先度はタブごとの連番で番号が重なるため、置き場所でまとめてから優先度順に並べる。
+  const ganttProjects = useMemo(() => {
+    const order: Placement[] = ["investment", "improvement", "petit", "ab"];
+    return projects
+      .filter((p) => p.status !== "完了" && filterProject(p))
+      .sort(
+        (a, b) =>
+          order.indexOf(placementOf(a)) - order.indexOf(placementOf(b)) ||
+          a.priority - b.priority
+      );
+  }, [projects, filterProject]);
   // 公開済み（完了）は通常施策・プチ改善施策の両方を含める。
   // プチ改善由来のものは公開済みビューで紫のプチ改善アイコンを付けて区別する。
   const releasedProjects = useMemo(() =>
@@ -1087,6 +1107,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
     await reload();
     setEditingProject(null);
+    await askPhaseAssigneeSync(editingProject, {
+      director: formData.director_id || null,
+      designer: formData.designer_id || null,
+      engineer: formData.engineer_id || null,
+    });
   };
 
   const handleDuplicate = async (project: Project) => {
@@ -1129,7 +1154,70 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     await reload();
   };
 
+  const memberNameOf = useCallback(
+    (id: string | null) => {
+      if (!id) return "未割当";
+      return members.find((m) => m.id === id)?.display_name ?? "不明";
+    },
+    [members]
+  );
+
+  // 施策の担当者を変えたら、テンプレートと同じ名前のフェーズも追随させるか確認する。
+  // 勝手に書き換えると個別に振り替えたフェーズが巻き戻るので、必ず確認をはさむ。
+  const askPhaseAssigneeSync = useCallback(
+    async (project: Project, after: RoleAssignees) => {
+      const before: RoleAssignees = {
+        director: project.director_id,
+        designer: project.designer_id,
+        engineer: project.engineer_id,
+      };
+      if (
+        before.director === after.director &&
+        before.designer === after.designer &&
+        before.engineer === after.engineer
+      ) {
+        return;
+      }
+      const { data } = await supabase
+        .from("phases")
+        .select("id, name, status, assignee_id")
+        .eq("project_id", project.id)
+        .order("sort_order", { ascending: true });
+      const candidates = buildPhaseSyncCandidates(data ?? [], before, after);
+      if (candidates.length === 0) return;
+      setPhaseSync({ projectTitle: project.title, candidates });
+    },
+    [supabase]
+  );
+
+  const applyPhaseAssigneeSync = useCallback(
+    async (targets: PhaseSyncCandidate[]) => {
+      // 同じ担当者になるものはまとめて1回で更新する
+      const byAssignee = new Map<string | null, string[]>();
+      for (const t of targets) {
+        const ids = byAssignee.get(t.nextAssigneeId) ?? [];
+        ids.push(t.phaseId);
+        byAssignee.set(t.nextAssigneeId, ids);
+      }
+      for (const [assigneeId, ids] of byAssignee) {
+        const { error } = await supabase
+          .from("phases")
+          .update({ assignee_id: assigneeId } as never)
+          .in("id", ids);
+        if (error) {
+          console.error("フェーズ担当者の更新に失敗", { ids, assigneeId, error });
+          alert(`保存できませんでした: ${error.message}`);
+          break;
+        }
+      }
+      setPhaseSync(null);
+      await reloadPhaseAssignees();
+    },
+    [supabase, reloadPhaseAssignees]
+  );
+
   const handleUpdateField = useCallback(async (id: string, patch: Partial<Project>) => {
+    const before = projects.find((p) => p.id === id);
     const { error } = await supabase.from("projects").update(patch as never).eq("id", id);
     // 失敗を黙って捨てると reload で元の値に戻るだけになり、「押しても変わらない」に見えて
     // 原因（制約違反・権限など）が分からなくなるので、その場で出す。
@@ -1138,7 +1226,14 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       alert(`保存できませんでした: ${error.message}`);
     }
     await reload();
-  }, [supabase, reload]);
+    if (!error && before) {
+      await askPhaseAssigneeSync(before, {
+        director: patch.director_id !== undefined ? patch.director_id : before.director_id,
+        designer: patch.designer_id !== undefined ? patch.designer_id : before.designer_id,
+        engineer: patch.engineer_id !== undefined ? patch.engineer_id : before.engineer_id,
+      });
+    }
+  }, [supabase, reload, projects, askPhaseAssigneeSync]);
 
   // 行メニューからのタブ移動。置き場所（投資/改善/プチ改善/ABテスト）を1つ選ぶ操作にそろえる。
   //   - プチ改善／ABテストは専用フラグ、投資／改善は track に落ちる（placementToFields が対応）
@@ -1406,14 +1501,14 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       </div>
 
       {/* 3分類ビュー：新規投資・構造改革（大きな塊 → 配下の施策） */}
-      {/* ガント（タブとは独立。未完了の投資／改善／アイデアの施策を期間で見る） */}
+      {/* ガント（タブとは独立。完了以外のすべての施策を期間で見る） */}
       {ganttOpen && (
         <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
           {/* 高さはページがスクロールしない範囲に収める（グローバルヘッダー45 + タブバー60 +
               余白64 = 約170px）。ページが縦スクロールすると、ガント内の日付ヘッダーが
               固定ヘッダーの裏に隠れて読めなくなるため。 */}
           <GanttChart
-            projects={activeProjects}
+            projects={ganttProjects}
             members={members}
             filterMemberId={filterMemberId}
             height="calc(100vh - 175px)"
@@ -1836,6 +1931,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         onSubmit={handleCreateProgram}
         title="プロジェクトを新規作成"
       />
+      {/* 施策の担当者を変えたときの、フェーズ追随の確認 */}
+      <PhaseAssigneeSyncDialog
+        open={phaseSync !== null}
+        onOpenChange={(open) => {
+          if (!open) setPhaseSync(null);
+        }}
+        projectTitle={phaseSync?.projectTitle ?? ""}
+        candidates={phaseSync?.candidates ?? []}
+        nameOf={memberNameOf}
+        onConfirm={applyPhaseAssigneeSync}
+      />
+
       <InvestmentProgramDialog
         open={editingProgram !== null}
         onOpenChange={(open) => {
