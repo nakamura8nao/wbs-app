@@ -44,6 +44,12 @@ function isWorkday(date: string) {
   return !isWeekend(date) && !isHoliday(date);
 }
 
+const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+
+function dowOf(date: string) {
+  return DOW[parseDate(date).getDay()];
+}
+
 function fmtMD(date: string) {
   const [, m, d] = date.split("-");
   return `${Number(m)}/${Number(d)}`;
@@ -112,6 +118,18 @@ function DayTooltip({
     >
       <div className="text-[11px] font-medium text-black/70">
         {point.date}
+        <span
+          className={cn(
+            "ml-0.5",
+            isHoliday(point.date) || parseDate(point.date).getDay() === 0
+              ? "text-rose-500"
+              : parseDate(point.date).getDay() === 6
+                ? "text-sky-500"
+                : "text-black/45"
+          )}
+        >
+          ({dowOf(point.date)})
+        </span>
         {getHolidayName(point.date) && (
           <span className="ml-1 text-rose-500">{getHolidayName(point.date)}</span>
         )}
