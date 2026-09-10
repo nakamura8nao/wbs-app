@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isHoliday, getHolidayName } from "@/lib/holidays";
@@ -66,6 +67,105 @@ function stackBounds(points: DayPoint[]) {
   });
 }
 
+const TOOLTIP_W = 288;
+const TOOLTIP_MARGIN = 12;
+
+// カーソル位置に固定表示する内訳。上下は余白が広いほうへ開き、
+// 入りきらないときだけ件数を丸めて「他N件」にする
+function DayTooltip({
+  point,
+  memberName,
+  nameOf,
+  at,
+}: {
+  point: DayPoint;
+  memberName: string;
+  nameOf: (id: string | null) => string;
+  at: { x: number; y: number };
+}) {
+  const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+
+  const spaceBelow = vh - at.y - TOOLTIP_MARGIN * 2;
+  const spaceAbove = at.y - TOOLTIP_MARGIN * 2;
+  const openUp = spaceBelow < spaceAbove;
+  const maxH = Math.max(160, openUp ? spaceAbove : spaceBelow);
+
+  // 見出し（日付・本数・内訳）に約 92px、1件あたり約 34px として収まる件数を出す
+  const fit = Math.max(3, Math.floor((maxH - 92) / 34));
+  const shown = point.entries.slice(0, fit);
+  const rest = point.entries.length - shown.length;
+
+  const style: React.CSSProperties = {
+    left: Math.min(Math.max(at.x + 14, 8), vw - TOOLTIP_W - 8),
+    width: TOOLTIP_W,
+    maxHeight: maxH,
+    ...(openUp
+      ? { bottom: vh - at.y + 14 }
+      : { top: at.y + 14 }),
+  };
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[100] overflow-hidden rounded-lg border border-black/10 bg-white p-2.5 shadow-lg"
+      style={style}
+    >
+      <div className="text-[11px] font-medium text-black/70">
+        {point.date}
+        {getHolidayName(point.date) && (
+          <span className="ml-1 text-rose-500">{getHolidayName(point.date)}</span>
+        )}
+        <span className="ml-1 text-black/40">/ {memberName}</span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <div className="text-lg font-semibold tabular-nums text-black/80">
+          {point.total}
+          <span className="ml-1 text-[11px] font-normal text-black/40">本</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {[...PLACEMENT_ORDER].reverse().map((key) =>
+            point.counts[key] > 0 ? (
+              <span
+                key={key}
+                className="text-[10px] tabular-nums"
+                style={{ color: PLACEMENT_META[key].color }}
+              >
+                {PLACEMENT_META[key].label}
+                {point.counts[key]}
+              </span>
+            ) : null
+          )}
+        </div>
+      </div>
+      {point.entries.length === 0 ? (
+        <div className="mt-1 text-xs text-black/30">予定なし</div>
+      ) : (
+        <>
+          <ul className="mt-1.5 space-y-1">
+            {shown.map((e) => (
+              <li key={e.key} className="flex gap-1.5 text-[11px] leading-tight">
+                <span
+                  className="mt-1 h-2 w-2 shrink-0 rounded-sm"
+                  style={{ background: PLACEMENT_META[e.placement].color }}
+                />
+                <span className="text-black/70">
+                  {e.projectTitle}
+                  <span className="block text-black/35">
+                    {nameOf(e.assigneeId)} / {e.phaseNames.join("・")}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {rest > 0 && (
+            <div className="mt-1 text-[10px] text-black/40">ほか {rest} 本</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function StackedAreaChart({
   points,
   today,
@@ -82,7 +182,9 @@ function StackedAreaChart({
   chartH?: number;
   maxYOverride?: number;
 }) {
-  const [hover, setHover] = useState<number | null>(null);
+  // ツールチップは本数が多いと縦に伸びるので、スクロール枠の中ではなく
+  // body へポータルして固定配置する（枠内に置くと下が切れる）
+  const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
 
   const maxY = Math.max(4, maxYOverride ?? 0, ...points.map((p) => p.total));
   const innerW = points.length * DAY_WIDTH;
@@ -98,7 +200,7 @@ function StackedAreaChart({
   for (let v = 0; v <= maxY; v += tickStep) ticks.push(v);
 
   const labelEvery = points.length <= 20 ? 1 : points.length <= 45 ? 2 : 7;
-  const hovered = hover === null ? null : points[hover];
+  const hovered = hover === null ? null : points[hover.i];
 
   return (
     <div className="relative overflow-x-auto">
@@ -212,16 +314,20 @@ function StackedAreaChart({
             width={DAY_WIDTH}
             height={chartH}
             fill="transparent"
-            onMouseEnter={() => setHover(i)}
-            onMouseLeave={() => setHover((cur) => (cur === i ? null : cur))}
+            onMouseEnter={(e) => {
+              // カーソル追従だと本数が多いときに揺れるので、その日の列に固定する
+              const r = e.currentTarget.getBoundingClientRect();
+              setHover({ i, x: r.right, y: r.top });
+            }}
+            onMouseLeave={() => setHover((cur) => (cur?.i === i ? null : cur))}
           />
         ))}
 
         {hover !== null && (
           <line
-            x1={x(hover)}
+            x1={x(hover.i)}
             y1={PAD.top}
-            x2={x(hover)}
+            x2={x(hover.i)}
             y2={PAD.top + chartH}
             stroke="#94a3b8"
             strokeWidth={1}
@@ -229,46 +335,12 @@ function StackedAreaChart({
         )}
       </svg>
 
-      {hovered && (
-        <div
-          className="pointer-events-none absolute top-2 z-10 w-64 rounded-lg border border-black/10 bg-white p-2.5 shadow-lg"
-          style={{
-            left: Math.min(x(hover!) + 10, PAD.left + innerW - 250),
-          }}
-        >
-          <div className="text-[11px] font-medium text-black/70">
-            {hovered.date}
-            {getHolidayName(hovered.date) && (
-              <span className="ml-1 text-rose-500">{getHolidayName(hovered.date)}</span>
-            )}
-            <span className="ml-1 text-black/40">/ {memberName}</span>
-          </div>
-          <div className="mt-0.5 text-lg font-semibold tabular-nums text-black/80">
-            {hovered.total}
-            <span className="ml-1 text-[11px] font-normal text-black/40">本</span>
-          </div>
-          {hovered.entries.length === 0 ? (
-            <div className="mt-1 text-xs text-black/30">予定なし</div>
-          ) : (
-            <ul className="mt-1.5 space-y-1">
-              {hovered.entries.map((e) => (
-                <li key={e.key} className="flex gap-1.5 text-[11px] leading-tight">
-                  <span
-                    className="mt-1 h-2 w-2 shrink-0 rounded-sm"
-                    style={{ background: PLACEMENT_META[e.placement].color }}
-                  />
-                  <span className="text-black/70">
-                    {e.projectTitle}
-                    <span className="block text-black/35">
-                      {nameOf(e.assigneeId)} / {e.phaseNames.join("・")}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {hovered &&
+        hover &&
+        createPortal(
+          <DayTooltip point={hovered} memberName={memberName} nameOf={nameOf} at={hover} />,
+          document.body
+        )}
     </div>
   );
 }
