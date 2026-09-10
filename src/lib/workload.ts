@@ -85,6 +85,14 @@ export function eachDate(start: string, end: string): string[] {
 
 // --- 集計 ---
 
+// 「公開」そのものは作業というより当日のリリース操作で、負荷として数えると
+// 実態より重く見えるので除外する。「公開前_◯◯確認」はレビュー工程なので残す。
+const RELEASE_PHASE = /^公開\s*($|[(（])/;
+
+export function isCountedPhase(name: string): boolean {
+  return !RELEASE_PHASE.test(name.trim());
+}
+
 // フェーズの占有期間。日付が入っていないものは対象外（＝予定なし）
 function span(phase: WorkloadPhaseInput): [string, string] | null {
   const s = phase.start_date;
@@ -104,6 +112,7 @@ export function toScheduledPhases(
   for (const ph of phases) {
     const project = byId.get(ph.project_id);
     if (!project) continue;
+    if (!isCountedPhase(ph.name)) continue;
     const sp = span(ph);
     if (!sp) continue;
     out.push({

@@ -71,21 +71,26 @@ function StackedAreaChart({
   today,
   memberName,
   nameOf,
+  chartH = CHART_H,
+  maxYOverride,
 }: {
   points: DayPoint[];
   today: string;
   memberName: string;
   nameOf: (id: string | null) => string;
+  // メンバー別に並べるときは高さを抑えつつ縦軸を共通化する
+  chartH?: number;
+  maxYOverride?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
 
-  const maxY = Math.max(4, ...points.map((p) => p.total));
+  const maxY = Math.max(4, maxYOverride ?? 0, ...points.map((p) => p.total));
   const innerW = points.length * DAY_WIDTH;
   const width = PAD.left + innerW + PAD.right;
-  const height = PAD.top + CHART_H + PAD.bottom;
+  const height = PAD.top + chartH + PAD.bottom;
 
   const x = (i: number) => PAD.left + i * DAY_WIDTH + DAY_WIDTH / 2;
-  const y = (v: number) => PAD.top + CHART_H - (v / maxY) * CHART_H;
+  const y = (v: number) => PAD.top + chartH - (v / maxY) * chartH;
 
   const bounds = stackBounds(points);
   const tickStep = Math.max(1, Math.ceil(maxY / 4));
@@ -108,7 +113,7 @@ function StackedAreaChart({
               x={PAD.left + i * DAY_WIDTH}
               y={PAD.top}
               width={DAY_WIDTH}
-              height={CHART_H}
+              height={chartH}
               fill={holiday ? "#fef2f2" : "#f1f5f9"}
             />
           );
@@ -169,7 +174,7 @@ function StackedAreaChart({
             x1={x(points.findIndex((p) => p.date === today))}
             y1={PAD.top}
             x2={x(points.findIndex((p) => p.date === today))}
-            y2={PAD.top + CHART_H}
+            y2={PAD.top + chartH}
             stroke="#ef4444"
             strokeWidth={1}
             strokeDasharray="3 3"
@@ -182,7 +187,7 @@ function StackedAreaChart({
             <text
               key={`label-${p.date}`}
               x={x(i)}
-              y={PAD.top + CHART_H + 16}
+              y={PAD.top + chartH + 16}
               textAnchor="middle"
               className={cn(
                 "text-[10px] tabular-nums",
@@ -205,7 +210,7 @@ function StackedAreaChart({
             x={PAD.left + i * DAY_WIDTH}
             y={PAD.top}
             width={DAY_WIDTH}
-            height={CHART_H}
+            height={chartH}
             fill="transparent"
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover((cur) => (cur === i ? null : cur))}
@@ -217,7 +222,7 @@ function StackedAreaChart({
             x1={x(hover)}
             y1={PAD.top}
             x2={x(hover)}
-            y2={PAD.top + CHART_H}
+            y2={PAD.top + chartH}
             stroke="#94a3b8"
             strokeWidth={1}
           />
@@ -265,35 +270,6 @@ function StackedAreaChart({
         </div>
       )}
     </div>
-  );
-}
-
-// メンバー一覧用のミニチャート（塗りだけ・縦横比は崩して幅いっぱいに伸ばす）
-function MiniChart({ points, maxY }: { points: DayPoint[]; maxY: number }) {
-  const bounds = stackBounds(points);
-  const n = points.length;
-  if (n < 2) return <div className="h-10" />;
-  return (
-    <svg
-      viewBox={`0 0 ${n - 1} ${maxY}`}
-      preserveAspectRatio="none"
-      className="h-10 w-full"
-    >
-      {PLACEMENT_ORDER.map((key) => {
-        const upper = points.map((_, i) => `${i},${maxY - bounds[i][key].upper}`);
-        const lower = points
-          .map((_, i) => `${i},${maxY - bounds[i][key].lower}`)
-          .reverse();
-        return (
-          <path
-            key={key}
-            d={`M ${upper.join(" L ")} L ${lower.join(" L ")} Z`}
-            fill={PLACEMENT_META[key].color}
-            fillOpacity={0.55}
-          />
-        );
-      })}
-    </svg>
   );
 }
 
@@ -384,7 +360,7 @@ export function WorkloadView({
     return rows;
   }, [tabs, scheduled, dates]);
 
-  const miniMaxY = Math.max(1, ...perMember.map((r) => r.peak));
+  const memberMaxY = Math.max(1, ...perMember.map((r) => r.peak));
   const selectedLabel = tabs.find((t) => t.key === selected)?.label ?? "全員（のべ）";
 
   return (
@@ -502,36 +478,44 @@ export function WorkloadView({
         </p>
       </div>
 
-      {/* メンバー一覧 */}
-      <div className="rounded-xl border border-black/5 bg-white p-4">
-        <div className="mb-3 text-xs font-medium text-black/60">
-          メンバー別（ピークが高い順・縦軸は共通 最大{miniMaxY}本）
-        </div>
-        <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-          {perMember.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setSelected(r.key)}
-              className={cn(
-                "rounded-lg border px-2.5 py-2 text-left transition-colors",
-                selected === r.key
-                  ? "border-primary-300 bg-primary-50"
-                  : "border-transparent hover:bg-slate-50"
-              )}
-            >
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-medium text-black/70">
-                  {r.label}
-                  {r.role && <span className="ml-1 text-[10px] text-black/30">{r.role}</span>}
-                </span>
-                <span className="text-[10px] tabular-nums text-black/40">
-                  ピーク{r.peak} / 埋{r.busy}日
-                </span>
-              </div>
-              <MiniChart points={r.points} maxY={miniMaxY} />
-            </button>
-          ))}
-        </div>
+      {/* メンバー別。縦軸は全員で共通にして高さをそのまま比べられるようにする */}
+      <div className="flex items-baseline justify-between px-1 pt-1">
+        <h3 className="text-sm font-medium text-white">メンバー別</h3>
+        <span className="text-[11px] text-white/40">
+          ピークが高い順 / 縦軸は共通（最大 {memberMaxY} 本）
+        </span>
+      </div>
+      <div className="space-y-3">
+        {perMember.map((r) => (
+          <div
+            key={r.key}
+            className={cn(
+              "rounded-xl border bg-white p-4",
+              selected === r.key ? "border-primary-300" : "border-black/5"
+            )}
+          >
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <button
+                onClick={() => setSelected(r.key)}
+                className="text-sm font-medium text-black/70 hover:text-primary-600"
+              >
+                {r.label}
+                {r.role && <span className="ml-1.5 text-[11px] text-black/35">{r.role}</span>}
+              </button>
+              <span className="text-[11px] tabular-nums text-black/40">
+                ピーク {r.peak}本 / 予定あり {r.busy}日 / 稼働日 {r.workdays}日
+              </span>
+            </div>
+            <StackedAreaChart
+              points={r.points}
+              today={today}
+              memberName={r.label}
+              nameOf={nameOf}
+              chartH={120}
+              maxYOverride={memberMaxY}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
