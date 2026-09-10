@@ -860,6 +860,19 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // それぞれ専用タブに集約する。2つのフラグは排他運用（片方を立てるともう片方は下りる）。
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && !p.is_petit_improvement && !p.is_ab_test && filterProject(p)), [projects, filterProject]);
+
+  // ガントはタブとは独立した見方なので、プチ改善／ABテストも含めて未完了の施策をすべて出す。
+  // 優先度はタブごとの連番で番号が重なるため、置き場所でまとめてから優先度順に並べる。
+  const ganttProjects = useMemo(() => {
+    const order: Placement[] = ["investment", "improvement", "petit", "ab"];
+    return projects
+      .filter((p) => p.status !== "完了" && filterProject(p))
+      .sort(
+        (a, b) =>
+          order.indexOf(placementOf(a)) - order.indexOf(placementOf(b)) ||
+          a.priority - b.priority
+      );
+  }, [projects, filterProject]);
   // 公開済み（完了）は通常施策・プチ改善施策の両方を含める。
   // プチ改善由来のものは公開済みビューで紫のプチ改善アイコンを付けて区別する。
   const releasedProjects = useMemo(() =>
@@ -1488,14 +1501,14 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       </div>
 
       {/* 3分類ビュー：新規投資・構造改革（大きな塊 → 配下の施策） */}
-      {/* ガント（タブとは独立。未完了の投資／改善／アイデアの施策を期間で見る） */}
+      {/* ガント（タブとは独立。完了以外のすべての施策を期間で見る） */}
       {ganttOpen && (
         <Suspense fallback={<div className="py-8 text-center text-sm text-white/30">読み込み中...</div>}>
           {/* 高さはページがスクロールしない範囲に収める（グローバルヘッダー45 + タブバー60 +
               余白64 = 約170px）。ページが縦スクロールすると、ガント内の日付ヘッダーが
               固定ヘッダーの裏に隠れて読めなくなるため。 */}
           <GanttChart
-            projects={activeProjects}
+            projects={ganttProjects}
             members={members}
             filterMemberId={filterMemberId}
             height="calc(100vh - 175px)"
