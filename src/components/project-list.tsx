@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
+import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, PLACEMENT_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
 import type { Track, Placement } from "@/lib/constants";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import { PhaseAssigneeSyncDialog } from "@/components/phase-assignee-sync-dialog";
@@ -65,6 +65,19 @@ const VIEW_TAB_GROUPS: TabDef[][] = [
   ],
   [{ key: "released", label: "公開済み", title: "公開（完了）した施策" }],
 ];
+
+// 公開日（target_date）が未設定の施策を月別集計でまとめる先の行キー。
+const UNDATED_MONTH = "未設定";
+
+// 月別集計で最初から開いておく行数（直近3か月）。残りはアコーディオンに畳む。
+const RELEASED_MONTHS_DEFAULT_ROWS = 3;
+
+// "2026-09" -> "2026年9月"。未設定行はそのまま返す。
+function formatMonthLabel(month: string) {
+  if (month === UNDATED_MONTH) return month;
+  const [year, rawMonth] = month.split("-");
+  return `${year}年${Number(rawMonth)}月`;
+}
 
 // 並び替えスロット。同じ priority が複数あると順序を表現できず、D&Dしても同じ値が
 // 書き戻されて行が元に戻ってしまう。昇順に並べたうえで厳密な増加列に補正する（[1,1,1] → [1,2,3]）。
@@ -842,6 +855,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const [ganttOpen, setGanttOpen] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
+  // 公開済みの月別集計。既定は直近3か月だけ出し、それより古い月はアコーディオンで畳む。
+  const [showAllReleasedMonths, setShowAllReleasedMonths] = useState(false);
   // メンバー + 着手状況フィルタ
   // メンバー絞り込みは施策の director/designer/engineer に加え、フェーズ担当者も対象にする
   // （1施策を複数エンジニアで分担する場合、フェーズ側にのみ担当者が入るケースがあるため）
@@ -885,6 +900,45 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       }),
     [projects, filterProject]
   );
+
+  // 公開済みの月別集計。母集団が releasedProjects なので、メンバー絞り込みがそのまま効く。
+  // 月は公開日（target_date）から取る。未設定のものは合計に含めたうえで「未設定」行にまとめる。
+  const releasedMonthlyStats = useMemo(() => {
+    const emptyRow = () =>
+      Object.fromEntries(PLACEMENT_OPTIONS.map((o) => [o.value, 0])) as Record<Placement, number>;
+    const byMonth = new Map<string, Record<Placement, number>>();
+    const totals = emptyRow();
+    for (const p of releasedProjects) {
+      const month = p.target_date ? p.target_date.slice(0, 7) : UNDATED_MONTH;
+      let row = byMonth.get(month);
+      if (!row) {
+        row = emptyRow();
+        byMonth.set(month, row);
+      }
+      const placement = placementOf(p);
+      row[placement] += 1;
+      totals[placement] += 1;
+    }
+    const sum = (row: Record<Placement, number>) =>
+      PLACEMENT_OPTIONS.reduce((acc, o) => acc + row[o.value], 0);
+    // 新しい月が上。公開日未設定は末尾に置く。
+    const rows = [...byMonth.entries()]
+      .sort(([a], [b]) => {
+        if (a === UNDATED_MONTH) return 1;
+        if (b === UNDATED_MONTH) return -1;
+        return b.localeCompare(a);
+      })
+      .map(([month, counts]) => ({ month, counts, total: sum(counts) }));
+    return { rows, totals, total: sum(totals) };
+  }, [releasedProjects]);
+
+  // 既定で開いておく行数＝直近3か月。rows は新しい月が先頭なので先頭から数える。
+  // （公開日が未設定の行は末尾に来るので、常に畳まれた側に入る）
+  const visibleReleasedMonths = showAllReleasedMonths
+    ? releasedMonthlyStats.rows
+    : releasedMonthlyStats.rows.slice(0, RELEASED_MONTHS_DEFAULT_ROWS);
+  const hiddenReleasedMonthCount =
+    releasedMonthlyStats.rows.length - visibleReleasedMonths.length;
 
   // プチ改善ビュー：未完了のプチ改善バックログのみ（完了したものは公開済みビューへ卒業）。優先度順。
   const petitProjects = useMemo(() =>
@@ -1699,52 +1753,141 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
       {/* 公開済みビュー */}
       {!ganttOpen && viewMode === "released" && (
-        <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={theadClasses}>
-                <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
-                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
-                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
-                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
-                <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
-                <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
-                <th scope="col" className="w-28 py-3 px-4 text-right text-xs font-medium text-slate-500 whitespace-nowrap" data-tooltip="起案日と公開日が同日の場合は1日">起案日からの日数</th>
-                <th scope="col" className="w-10 py-3 px-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {releasedProjects.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-16 text-center text-base text-slate-500">
-                    公開済みの施策はありません
-                  </td>
+        <div className="space-y-4">
+          {/* 月別の公開数。母集団は下の一覧と同じなので、メンバー絞り込みがそのまま効く。
+              「月」は公開日（target_date）の年月。 */}
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <div className="border-b border-slate-200 bg-gray-50 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h3 className="text-sm font-semibold text-slate-900">月別の公開数</h3>
+                <span className="text-xs text-slate-500">
+                  {filterMemberId
+                    ? `${members.find((m) => m.id === filterMemberId)?.display_name ?? "選択中のメンバー"}の担当分`
+                    : "全メンバー"}
+                </span>
+              </div>
+            </div>
+            {releasedMonthlyStats.rows.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">集計する公開済みの施策はありません</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className={theadClasses}>
+                      <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">月</th>
+                      {PLACEMENT_OPTIONS.map((o) => (
+                        <th key={o.value} scope="col" className="w-24 py-3 px-4 text-right text-xs font-medium text-slate-500" title={o.description}>
+                          {o.short}
+                        </th>
+                      ))}
+                      <th scope="col" className="w-24 py-3 px-4 text-right text-xs font-medium text-slate-500">合計</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleReleasedMonths.map((row) => (
+                      <tr key={row.month} className="hover:bg-gray-50">
+                        <th scope="row" className="py-2.5 px-4 text-left font-medium text-slate-700">
+                          {formatMonthLabel(row.month)}
+                        </th>
+                        {PLACEMENT_OPTIONS.map((o) => (
+                          <td key={o.value} className="py-2.5 px-4 text-right font-mono tabular-nums text-slate-700">
+                            {/* 0件はノイズになるので薄く出す */}
+                            {row.counts[o.value] === 0 ? <span className="text-slate-300">0</span> : row.counts[o.value]}
+                          </td>
+                        ))}
+                        <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">{row.total}</td>
+                      </tr>
+                    ))}
+                    {/* 畳んだ月の開閉。閉じているときも合計行は全期間のままなので、
+                        「見えている行の足し算 ≠ 合計」になる点はラベルで補う。 */}
+                    {(hiddenReleasedMonthCount > 0 || showAllReleasedMonths) && (
+                      <tr>
+                        <td colSpan={PLACEMENT_OPTIONS.length + 2} className="p-0">
+                          <button
+                            type="button"
+                            onClick={() => setShowAllReleasedMonths((prev) => !prev)}
+                            aria-expanded={showAllReleasedMonths}
+                            className="flex w-full items-center justify-start gap-1.5 py-2.5 px-4 text-xs font-medium text-slate-500 transition-colors hover:bg-gray-50 hover:text-slate-700 cursor-pointer"
+                          >
+                            {showAllReleasedMonths ? (
+                              <>
+                                <ChevronDown size={14} />
+                                直近{RELEASED_MONTHS_DEFAULT_ROWS}か月だけ表示
+                              </>
+                            ) : (
+                              <>
+                                <ChevronRight size={14} />
+                                それ以前を表示
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-gray-50">
+                      <th scope="row" className="py-2.5 px-4 text-left text-xs font-medium text-slate-500">合計（全期間）</th>
+                      {PLACEMENT_OPTIONS.map((o) => (
+                        <td key={o.value} className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">
+                          {releasedMonthlyStats.totals[o.value]}
+                        </td>
+                      ))}
+                      <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">{releasedMonthlyStats.total}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={theadClasses}>
+                  <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                  <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
+                  <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">状態</th>
+                  <th scope="col" className="w-28 py-3 px-4 text-left text-xs font-medium text-slate-500">起案日</th>
+                  <th scope="col" className="w-28 py-3 px-4 text-right text-xs font-medium text-slate-500 whitespace-nowrap" data-tooltip="起案日と公開日が同日の場合は1日">起案日からの日数</th>
+                  <th scope="col" className="w-10 py-3 px-2"></th>
                 </tr>
-              ) : (
-                releasedProjects.map((project) => (
-                  <ProjectRow
-                    key={project.id}
-                    project={project}
-                    isExpanded={expandedProjectId === project.id}
-                    onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
-                    onEdit={() => setEditingProject(project)}
-                    onDuplicate={() => handleDuplicate(project)}
-                    onDelete={() => handleDelete(project.id)}
-                    onMove={(placement) => moveProject(project, placement)}
-                    onUpdateField={handleUpdateField}
-                    onPhasesChange={reloadPhaseAssignees}
-                    hidePriority
-                    hideProgress
-                    showProposedDate
-                    showPetitBadge
-                    showAbBadge
-                    members={members}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {releasedProjects.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-16 text-center text-base text-slate-500">
+                      公開済みの施策はありません
+                    </td>
+                  </tr>
+                ) : (
+                  releasedProjects.map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      project={project}
+                      isExpanded={expandedProjectId === project.id}
+                      onToggle={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+                      onEdit={() => setEditingProject(project)}
+                      onDuplicate={() => handleDuplicate(project)}
+                      onDelete={() => handleDelete(project.id)}
+                      onMove={(placement) => moveProject(project, placement)}
+                      onUpdateField={handleUpdateField}
+                      onPhasesChange={reloadPhaseAssignees}
+                      hidePriority
+                      hideProgress
+                      showProposedDate
+                      showPetitBadge
+                      showAbBadge
+                      members={members}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
