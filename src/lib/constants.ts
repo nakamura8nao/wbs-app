@@ -113,11 +113,12 @@ export const INVESTMENT_PROGRAM_SOFT_LIMIT = 10;
 // DB上は投資/改善が track 列、プチ改善/ABテストが専用フラグに分かれているが、
 // 運用上は「どのタブに置くか」の1択なので、入力はこの5択にまとめて保存時にマッピングする。
 // （プチ改善の日次集計とスナップショット履歴がフラグを見ているため、列構成はそのまま残す）
+// short はタブや集計表などの狭い場所での略称。
 export const PLACEMENT_OPTIONS = [
-  { value: "investment", label: "投資（新規投資・構造改革）", description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策" },
-  { value: "improvement", label: "改善（継続改善・運用強化）", description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
-  { value: "petit", label: "プチ改善", description: "投資・改善施策と並行して進めるサブタスク" },
-  { value: "ab", label: "ABテスト", description: "リリース前にABテストで効果を検証する施策" },
+  { value: "investment", label: "投資（新規投資・構造改革）", short: "投資", description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策" },
+  { value: "improvement", label: "改善（継続改善・運用強化）", short: "改善", description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
+  { value: "petit", label: "プチ改善", short: "プチ改善", description: "投資・改善施策と並行して進めるサブタスク" },
+  { value: "ab", label: "ABテスト", short: "ABテスト", description: "リリース前にABテストで効果を検証する施策" },
 ] as const;
 
 type PlacementSource = {
@@ -149,6 +150,10 @@ export function placementToFields(placement: Placement, currentTrack: Track) {
 export function placementLabel(project: PlacementSource) {
   const placement = placementOf(project);
   return PLACEMENT_OPTIONS.find((o) => o.value === placement)?.label ?? placement;
+}
+
+export function placementShortLabel(value: string) {
+  return PLACEMENT_OPTIONS.find((o) => o.value === value)?.short ?? value;
 }
 
 export function trackLabel(value: string) {
