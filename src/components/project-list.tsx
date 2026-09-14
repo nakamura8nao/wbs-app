@@ -1565,7 +1565,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                       <SortableProgramCard key={program.id} id={program.id}>
                         {(dragHandle) => (
                           <>
-                            {/* 塊の見出し。成功条件（目的）と大まかな期日を常に表示する */}
+                            {/* Program header: goal and target period are always shown. */}
                             <div className="border-b border-slate-200 bg-gray-50 px-4 py-3">
                               <div className="flex items-start gap-2">
                                 <span className="mt-0.5 shrink-0">{dragHandle}</span>
