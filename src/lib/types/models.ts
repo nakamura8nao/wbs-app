@@ -37,6 +37,8 @@ export type Project = {
   group_lv3: string | null;
   priority: number;
   priority_undecided: boolean;
+  // 要求定義ビュー専用の並び順（他ビューの priority には影響しない）
+  requirement_priority: number | null;
   target_date: string | null;
   target_date_tentative: boolean;
   must_date: string | null;
