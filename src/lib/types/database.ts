@@ -88,6 +88,7 @@ export type Database = {
           group_lv3: string | null;
           priority: number;
           priority_undecided: boolean;
+          requirement_priority: number | null;
           target_date: string | null;
           target_date_tentative: boolean;
           must_date: string | null;
@@ -118,6 +119,7 @@ export type Database = {
           group_lv3?: string | null;
           priority?: number;
           priority_undecided?: boolean;
+          requirement_priority?: number | null;
           target_date?: string | null;
           target_date_tentative?: boolean;
           must_date?: string | null;
@@ -146,6 +148,7 @@ export type Database = {
           group_lv3?: string | null;
           priority?: number;
           priority_undecided?: boolean;
+          requirement_priority?: number | null;
           target_date?: string | null;
           target_date_tentative?: boolean;
           must_date?: string | null;

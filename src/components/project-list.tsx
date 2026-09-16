@@ -6,7 +6,7 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Target, CalendarClock, Plus, ChartGantt } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Target, CalendarClock, Plus, ChartGantt, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
@@ -853,6 +853,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   // ガントはタブ（施策の分類）とは別軸の見方なので、タブとは独立した表示トグルで持つ
   const [ganttOpen, setGanttOpen] = useState(false);
+  // 要求定義ビューもタブとは別軸（ステータス横断で「いま要求定義を書いているもの」を並べる）
+  const [requirementsOpen, setRequirementsOpen] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "not_started" | "started">("");
   // 公開済みの月別集計。既定は直近3か月だけ出し、それより古い月はアコーディオンで畳む。
@@ -875,6 +877,27 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // それぞれ専用タブに集約する。2つのフラグは排他運用（片方を立てるともう片方は下りる）。
   // 公開済み（完了）とそれ以外を分離
   const activeProjects = useMemo(() => projects.filter((p) => p.status !== "完了" && !p.is_petit_improvement && !p.is_ab_test && filterProject(p)), [projects, filterProject]);
+
+  // 要求定義ビュー。ステータスが「要求定義」の施策だけを、このビュー専用の並び順で出す。
+  // requirement_priority が未設定のものは末尾に回し、その中では通常の priority 順にする。
+  const requirementProjects = useMemo(
+    () =>
+      projects
+        .filter((p) => p.status === "要求定義" && filterProject(p))
+        .sort(
+          (a, b) =>
+            (a.requirement_priority ?? Number.MAX_SAFE_INTEGER) -
+              (b.requirement_priority ?? Number.MAX_SAFE_INTEGER) ||
+            a.priority - b.priority
+        ),
+    [projects, filterProject]
+  );
+
+  // 「動いている」＝ progress が active（▶️）。止まっているものと並べて数を出す
+  const requirementActiveCount = useMemo(
+    () => requirementProjects.filter((p) => p.progress === "active").length,
+    [requirementProjects]
+  );
 
   // ガントはタブとは独立した見方なので、プチ改善／ABテストも含めて未完了の施策をすべて出す。
   // 優先度はタブごとの連番で番号が重なるため、置き場所でまとめてから優先度順に並べる。
@@ -1366,6 +1389,48 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
     }
   };
 
+  // 要求定義ビューの並び替え。専用列 requirement_priority を、その時点の一覧に 1..n で振り直す。
+  // priority には触らないので、投資／改善などの並びは動かない。
+  const handleRequirementDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const items = [...requirementProjects];
+    const oldIndex = items.findIndex((p) => p.id === active.id);
+    const newIndex = items.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const [moved] = items.splice(oldIndex, 1);
+    items.splice(newIndex, 0, moved);
+    const reordered = items.map((p, i) => ({ ...p, requirement_priority: i + 1 }));
+
+    // 楽観的更新
+    const reorderedById = new Map(reordered.map((p) => [p.id, p]));
+    setProjects((prev) => prev.map((p) => reorderedById.get(p.id) ?? p));
+
+    const changed = reordered.filter(
+      (p) =>
+        requirementProjects.find((o) => o.id === p.id)?.requirement_priority !==
+        p.requirement_priority
+    );
+    if (changed.length > 0) {
+      const results = await Promise.all(
+        changed.map((p) =>
+          supabase
+            .from("projects")
+            .update({ requirement_priority: p.requirement_priority } as never)
+            .eq("id", p.id)
+        )
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        console.error("要求定義の並び順の保存に失敗", failed.error);
+        alert(`並び順を保存できませんでした: ${failed.error.message}`);
+        await reload();
+      }
+    }
+  };
+
   const handlePetitDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, petitProjects);
   const handleAbDragEnd = (event: DragEndEvent) => handleSubViewDragEnd(event, abProjects);
   // 改善ビューの並び替え。そのビューが持つ priority 値の昇順スロットを詰め替える
@@ -1404,6 +1469,9 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       );
     }
   };
+
+  // ガント／要求定義ビューを開いている間はタブのビューを出さない
+  const showTabView = !ganttOpen && !requirementsOpen;
 
   const theadClasses = "border-b border-slate-200 bg-gray-50";
   // 投資／改善ビューの表ヘッダー。
@@ -1478,10 +1546,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     onClick={() => {
                       setViewMode(tab.key);
                       setGanttOpen(false);
+                      setRequirementsOpen(false);
                     }}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
-                      viewMode === tab.key && !ganttOpen
+                      viewMode === tab.key && showTabView
                         ? "bg-white text-slate-900 shadow-md shadow-black/10"
                         : "text-white/50 hover:text-white/80 hover:bg-white/5"
                     )}
@@ -1528,10 +1597,31 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
           </select>
         </div>
         <div className="flex items-center gap-3">
+          {/* 要求定義ビュー。ガントと同じく「タブとは別軸の見方」なので隣に並べる */}
+          <button
+            onClick={() => {
+              setRequirementsOpen((prev) => !prev);
+              setGanttOpen(false);
+            }}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border transition-all duration-200 cursor-pointer",
+              requirementsOpen
+                ? "border-primary-400/60 bg-primary-500/20 text-primary-200"
+                : "border-white/15 bg-white/8 text-white/60 hover:bg-white/12 hover:text-white/80"
+            )}
+            title="ステータスが要求定義の施策を、このビュー専用の並び順で見る"
+            aria-pressed={requirementsOpen}
+          >
+            <ClipboardList size={15} />
+            要求定義
+          </button>
           {/* ガントはタブとは別軸（施策の分類ではなく期間の見方）なので、
               タブ群から離してアウトライン表示のトグルとして置く */}
           <button
-            onClick={() => setGanttOpen((prev) => !prev)}
+            onClick={() => {
+              setGanttOpen((prev) => !prev);
+              setRequirementsOpen(false);
+            }}
             className={cn(
               "inline-flex items-center justify-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg border transition-all duration-200 cursor-pointer",
               ganttOpen
@@ -1554,6 +1644,80 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         </div>
       </div>
 
+      {/* 要求定義ビュー（タブとは独立。ステータスが要求定義の施策だけを専用の並び順で見る） */}
+      {requirementsOpen && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <ClipboardList size={16} className="text-sky-500" />
+              <h3 className="text-sm font-semibold text-sky-900">要求定義</h3>
+              <span className="text-sm font-semibold tabular-nums text-sky-800">
+                {requirementProjects.length}件
+              </span>
+              <span className="text-xs text-sky-700">
+                うち動いている{" "}
+                <span className="font-semibold tabular-nums">{requirementActiveCount}</span>件
+                <span className="ml-1 text-sky-700/60">
+                  / 止まっている {requirementProjects.length - requirementActiveCount}件
+                </span>
+              </span>
+              <span className="text-xs text-sky-700/70">
+                ここでの並び替えはこのビュー専用で、他のタブの優先順位には影響しません
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
+            <table className="w-full text-sm">
+              {trackTableHead({ drag: true })}
+              {requirementProjects.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={10} className="py-16 text-center text-base text-slate-500">
+                      ステータスが「要求定義」の施策はありません。
+                    </td>
+                  </tr>
+                </tbody>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleRequirementDragEnd}
+                >
+                  <SortableContext
+                    items={requirementProjects.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody className="divide-y divide-slate-100">
+                      {requirementProjects.map((project) => (
+                        <SortableProjectRow
+                          key={project.id}
+                          project={project}
+                          isExpanded={expandedProjectId === project.id}
+                          onToggle={() =>
+                            setExpandedProjectId(
+                              expandedProjectId === project.id ? null : project.id
+                            )
+                          }
+                          onEdit={() => setEditingProject(project)}
+                          onDuplicate={() => handleDuplicate(project)}
+                          onDelete={() => handleDelete(project.id)}
+                          onMove={(placement) => moveProject(project, placement)}
+                          onUpdateField={handleUpdateField}
+                          onPhasesChange={reloadPhaseAssignees}
+                          hidePriority
+                          members={members}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* 3分類ビュー：新規投資・構造改革（大きな塊 → 配下の施策） */}
       {/* ガント（タブとは独立。完了以外のすべての施策を期間で見る） */}
       {ganttOpen && (
@@ -1570,7 +1734,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         </Suspense>
       )}
 
-      {!ganttOpen && viewMode === "investment" && (
+      {showTabView && viewMode === "investment" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1694,7 +1858,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* 継続改善・運用強化ビュー（フラットな1本の表） */}
-      {!ganttOpen && viewMode === "improvement" && (
+      {showTabView && viewMode === "improvement" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1752,7 +1916,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* 公開済みビュー */}
-      {!ganttOpen && viewMode === "released" && (
+      {showTabView && viewMode === "released" && (
         <div className="space-y-4">
           {/* 月別の公開数。母集団は下の一覧と同じなので、メンバー絞り込みがそのまま効く。
               「月」は公開日（target_date）の年月。 */}
@@ -1892,7 +2056,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* プチ改善ビュー */}
-      {!ganttOpen && viewMode === "petit" && (
+      {showTabView && viewMode === "petit" && (
         <div className="space-y-4">
           {/* 見出し */}
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-5 py-3">
@@ -1972,7 +2136,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       )}
 
       {/* ABテストビュー */}
-      {!ganttOpen && viewMode === "ab" && (
+      {showTabView && viewMode === "ab" && (
         <div className="space-y-4">
           {/* 見出し */}
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-3">
