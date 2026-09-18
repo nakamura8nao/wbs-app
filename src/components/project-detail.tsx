@@ -70,6 +70,7 @@ export function ProjectDetail({
         group_lv2: formData.group_lv2 || null,
         group_lv3: formData.group_lv3 || null,
         priority: formData.priority,
+        requirement_due_date: formData.requirement_due_date || null,
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
         must_date: formData.must_date || null,
@@ -145,6 +146,7 @@ export function ProjectDetail({
           } />
           <InfoItem label="事業" value={[project.group_lv2, project.group_lv3].filter(Boolean).join(" / ") || project.group_lv1 || "-"} />
           <InfoItem label="起案日" value={project.proposed_date ?? "-"} />
+          <InfoItem label="要求定義期日" value={project.requirement_due_date ?? "-"} />
           <InfoItem label="公開目安" value={
             project.target_date
               ? project.target_date_tentative ? `${project.target_date} (仮)` : project.target_date
