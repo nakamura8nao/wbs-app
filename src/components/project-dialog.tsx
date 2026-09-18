@@ -52,6 +52,7 @@ const EMPTY_FORM: ProjectFormData = {
   group_lv2: "",
   group_lv3: "",
   priority: 0,
+  requirement_due_date: "",
   target_date: "",
   target_date_tentative: false,
   must_date: "",
@@ -161,6 +162,7 @@ export function ProjectDialog({
         group_lv2: defaultValues.group_lv2 ?? "",
         group_lv3: defaultValues.group_lv3 ?? "",
         priority: defaultValues.priority,
+        requirement_due_date: defaultValues.requirement_due_date ?? "",
         target_date: defaultValues.target_date ?? "",
         target_date_tentative: defaultValues.target_date_tentative ?? false,
         must_date: defaultValues.must_date ?? "",
@@ -375,6 +377,18 @@ export function ProjectDialog({
                 </div>
               </FormField>
             </div>
+
+            <FormField
+              label="要求定義期日"
+              tooltip="要求定義を書き上げる期日。公開の日付（公開目安・公開マスト期日）とは別軸で、要求定義ビューの一覧に出る。"
+            >
+              <Input
+                type="date"
+                value={form.requirement_due_date}
+                onChange={(e) => update("requirement_due_date", e.target.value)}
+                className="w-48"
+              />
+            </FormField>
 
             <FormField
               label="公開マスト期日"

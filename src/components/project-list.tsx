@@ -494,6 +494,87 @@ function MustDateCell({
   );
 }
 
+// 要求定義期日のインライン編集。要求定義を書き上げる自分たちの締切で、
+// 公開の日付（公開目安・公開マスト期日）とは別の軸として持つ。
+// 期日を過ぎていて、まだ終わっていない（progress が done 以外）ときだけ赤くする。
+function RequirementDueDateCell({
+  project,
+  onChange,
+}: {
+  project: Project;
+  onChange: (value: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftValue, setDraftValue] = useState<string | null>(project.requirement_due_date);
+  const value = project.requirement_due_date;
+  const overdue =
+    !!value && project.progress !== "done" && value < new Date().toLocaleDateString("sv-SE");
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) {
+      setDraftValue(value);
+    } else if (draftValue !== value) {
+      onChange(draftValue);
+    }
+    setOpen(next);
+  };
+
+  return (
+    <Menu.Root open={open} onOpenChange={handleOpenChange} modal={false}>
+      <Menu.Trigger
+        onClick={(e) => e.stopPropagation()}
+        data-tooltip={value
+          ? "要求定義期日：要求定義を書き上げる締切。クリックで変更・クリア。"
+          : "クリックで「要求定義期日」（要求定義を書き上げる締切）を設定"}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 -mx-1 outline-none cursor-pointer transition-colors",
+          overdue
+            ? "text-red-500 hover:text-red-600"
+            : value
+              ? "text-slate-700 hover:text-slate-900"
+              : "text-slate-300 hover:text-slate-500"
+        )}
+      >
+        <CalendarClock size={13} className="shrink-0" />
+        <span className="text-xs font-medium">{value ?? "-"}</span>
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-[60]">
+          <Menu.Popup className={cn(menuPopupClasses, "p-3 min-w-[220px]")} style={menuPopupStyle}>
+            <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+              <span className="text-xs font-medium text-slate-500">要求定義期日</span>
+              <input
+                type="date"
+                value={draftValue ?? ""}
+                onChange={(e) => setDraftValue(e.target.value || null)}
+                className="h-8 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-[#4a9eff]"
+              />
+              <div className="flex items-center justify-between">
+                {draftValue ? (
+                  <button
+                    type="button"
+                    onClick={() => setDraftValue(null)}
+                    className="text-left text-xs text-slate-500 hover:text-red-500"
+                  >
+                    クリア
+                  </button>
+                ) : <span />}
+                <button
+                  type="button"
+                  onClick={() => handleOpenChange(false)}
+                  className="rounded-md bg-primary-500 px-3 py-1 text-xs font-medium text-white hover:bg-primary-400 cursor-pointer"
+                >
+                  適用
+                </button>
+              </div>
+            </div>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 // 公開目安（上段）と公開マスト期日（下段）を1セルにまとめたセル。
 // マスト期日が未設定の行は上段だけになるので、一覧の行高は今までと変わらない。
 function ReleaseDateCell({
@@ -541,6 +622,7 @@ const ProjectRow = memo(function ProjectRow({
   onPhasesChange,
   hidePriority,
   hideProgress,
+  showRequirementDue,
   showProposedDate,
   statusOptions,
   showPetitBadge,
@@ -561,6 +643,8 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority?: boolean;
   // 公開済みビュー用。完了済みの行では進行状況（⏸/▶/✅）が意味を持たないので出さない
   hideProgress?: boolean;
+  // 要求定義ビュー用。要求定義を書き上げる期日の列を出す
+  showRequirementDue?: boolean;
   showProposedDate?: boolean;
   // ステータスの選択肢。既定は STATUS_OPTIONS で、ABテストタブだけ AB_STATUS_OPTIONS を渡す
   statusOptions?: readonly string[];
@@ -601,6 +685,7 @@ const ProjectRow = memo(function ProjectRow({
     (sortable ? 1 : 0) +
     (hidePriority ? 0 : 1) +
     (hideProgress ? 0 : 1) +
+    (showRequirementDue ? 1 : 0) +
     (showProposedDate ? 2 : 0);
 
   return (
@@ -656,6 +741,14 @@ const ProjectRow = memo(function ProjectRow({
           </Link>
         </span>
       </td>
+      {showRequirementDue && (
+        <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
+          <RequirementDueDateCell
+            project={project}
+            onChange={(v) => onUpdateField(project.id, { requirement_due_date: v })}
+          />
+        </td>
+      )}
       <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
         <ReleaseDateCell project={project} onUpdateField={onUpdateField} />
       </td>
@@ -1132,6 +1225,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       group_lv3: formData.group_lv3 || null,
       priority: 1,
       priority_undecided: false,
+      requirement_due_date: formData.requirement_due_date || null,
       target_date: formData.target_date || null,
       target_date_tentative: formData.target_date_tentative,
       must_date: formData.must_date || null,
@@ -1164,6 +1258,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
         group_lv2: formData.group_lv2 || null,
         group_lv3: formData.group_lv3 || null,
         priority: formData.priority,
+        requirement_due_date: formData.requirement_due_date || null,
         target_date: formData.target_date || null,
         target_date_tentative: formData.target_date_tentative,
         must_date: formData.must_date || null,
@@ -1205,6 +1300,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       group_lv3: project.group_lv3,
       priority: maxPriority + 1,
       priority_undecided: true,
+      requirement_due_date: project.requirement_due_date,
       target_date: project.target_date,
       target_date_tentative: project.target_date_tentative,
       must_date: project.must_date,
@@ -1477,11 +1573,14 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // 投資／改善ビューの表ヘッダー。
   // 列順は ProjectRow の td と対応させる（drag → タイトル … 状態 → 進行 → 備考 → メニュー）。
   // 分類とプロジェクトは行に出さない（タブと塊の見出しで分かるので、行では冗長）。
-  const trackTableHead = ({ drag = false }: { drag?: boolean }) => (
+  const trackTableHead = ({ drag = false, requirementDue = false }: { drag?: boolean; requirementDue?: boolean }) => (
     <thead>
       <tr className={theadClasses}>
         {drag && <th scope="col" className="w-8 py-3 px-2"></th>}
         <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+        {requirementDue && (
+          <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">要求定義期日</th>
+        )}
         <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
         <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -1669,11 +1768,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
           <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
             <table className="w-full text-sm">
-              {trackTableHead({ drag: true })}
+              {trackTableHead({ drag: true, requirementDue: true })}
               {requirementProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={10} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={11} className="py-16 text-center text-base text-slate-500">
                       ステータスが「要求定義」の施策はありません。
                     </td>
                   </tr>
@@ -1706,6 +1805,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
+                          showRequirementDue
                           members={members}
                         />
                       ))}

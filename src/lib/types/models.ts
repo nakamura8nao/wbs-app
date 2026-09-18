@@ -39,6 +39,8 @@ export type Project = {
   priority_undecided: boolean;
   // 要求定義ビュー専用の並び順（他ビューの priority には影響しない）
   requirement_priority: number | null;
+  // 要求定義を書き上げる期日（公開日とは別軸。null は未設定）
+  requirement_due_date: string | null;
   target_date: string | null;
   target_date_tentative: boolean;
   must_date: string | null;
@@ -107,6 +109,7 @@ export type ProjectFormData = {
   group_lv2: string;
   group_lv3: string;
   priority: number;
+  requirement_due_date: string;
   target_date: string;
   target_date_tentative: boolean;
   must_date: string;
