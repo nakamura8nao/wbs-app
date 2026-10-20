@@ -221,6 +221,64 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
   );
 }
 
+// YYYY-MM-DD の1か月前（同日）を返す。月末の日付は Date の繰り上げに任せる（例: 03-31 → 03-03 は許容）
+function monthAgo(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
+// 期間の増減カード。増減（純）を大きく、増加・減少をその下に並べる。
+// 残数はゼロに近づけるのが目的なので、純増減は減っていれば緑・増えていれば赤。
+function FlowCard({
+  label,
+  flow,
+  period,
+  disabled = false,
+}: {
+  label: string;
+  flow: { increase: number; decrease: number };
+  period: string;
+  disabled?: boolean;
+}) {
+  const net = flow.increase - flow.decrease;
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="text-[11px] text-white/50">{label}</div>
+      {disabled ? (
+        <>
+          <div className="mt-0.5 text-2xl font-semibold tabular-nums text-white/40">—</div>
+          <div className="mt-0.5 text-[11px] text-white/40">バックフィル後に表示</div>
+        </>
+      ) : (
+        <>
+          <div
+            className={cn(
+              "mt-0.5 text-2xl font-semibold tabular-nums",
+              net < 0 ? "text-emerald-300" : net > 0 ? "text-rose-300" : "text-white/80"
+            )}
+          >
+            {signed(net)}
+          </div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] tabular-nums">
+            <span className="inline-flex items-center gap-0.5 text-rose-300/80">
+              <ArrowUp size={11} />
+              増加 {flow.increase}
+            </span>
+            <span className="inline-flex items-center gap-0.5 text-emerald-300/80">
+              <ArrowDown size={11} />
+              減少 {flow.decrease}
+            </span>
+            <span className="text-white/40">{period}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SummaryCard({
   label,
   value,
@@ -267,32 +325,32 @@ export function DailyStatsView({
       return next;
     });
 
-  // 期間累計（減少内訳）と現在値
+  // 現在値（最新行）と、直近1か月（最新日の1か月前の翌日〜最新日）の増減。
+  // 全体は行の increase/decrease、ステータス別は statusFlows を期間で合計する。
   const summary = useMemo(() => {
     const latest = stats[stats.length - 1];
-    const totals = stats.reduce(
-      (acc, s) => {
-        acc.increase += s.increase;
-        acc.published += s.breakdown.published;
-        acc.movedOut += s.breakdown.movedOut;
-        acc.deleted += s.breakdown.deleted;
-        return acc;
-      },
-      { increase: 0, published: 0, movedOut: 0, deleted: 0 }
-    );
-    const decrease = totals.published + totals.movedOut + totals.deleted;
+    if (!latest) return null;
+    const since = monthAgo(latest.date);
+    const window = stats.filter((s) => s.date > since && !s.isBaseline);
+    const sumFlow = (pick: (s: DayStat) => { increase: number; decrease: number } | undefined) =>
+      window.reduce(
+        (acc, s) => {
+          const f = pick(s);
+          acc.increase += f?.increase ?? 0;
+          acc.decrease += f?.decrease ?? 0;
+          return acc;
+        },
+        { increase: 0, decrease: 0 }
+      );
     return {
-      current: latest?.total ?? 0,
-      // 内訳列の追加前に作られた行は statusCounts が空。その間は既定の説明文に戻す
-      currentBreakdown:
-        latest && Object.keys(latest.statusCounts).length > 0
-          ? HIGHLIGHT_STATUSES.map((st) => `${st}${countOf(latest, st)}`).join(" / ")
-          : "",
-      increase: totals.increase,
-      decrease,
-      published: totals.published,
-      movedOut: totals.movedOut,
-      deleted: totals.deleted,
+      hasBreakdown: Object.keys(latest.statusCounts).length > 0,
+      current: latest.total,
+      currentByStatus: HIGHLIGHT_STATUSES.map((st) => ({ status: st, count: countOf(latest, st) })),
+      // 期間の表示用（開始日は含まない日の翌日）
+      windowFrom: window[0]?.date ?? latest.date,
+      windowTo: latest.date,
+      total: sumFlow((s) => s),
+      byStatus: HIGHLIGHT_STATUSES.map((st) => ({ status: st, ...sumFlow((s) => s.statusFlows[st]) })),
     };
   }, [stats]);
 
@@ -319,35 +377,40 @@ export function DailyStatsView({
         </div>
       </div>
 
-      {/* サマリー */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryCard
-          label="現在の残数（未完了）"
-          value={`${summary.current}`}
-          accent={config.totalAccent}
-          sub={summary.currentBreakdown || config.totalSub}
-        />
-        <SummaryCard
-          label="累計 増加"
-          value={`+${summary.increase}`}
-          accent="text-rose-300"
-        />
-        <SummaryCard
-          label="累計 減少"
-          value={`−${summary.decrease}`}
-          accent="text-emerald-300"
-          sub={`公開${summary.published} / 移動${summary.movedOut} / 削除${summary.deleted}`}
-        />
-        <SummaryCard
-          label="純増減（累計）"
-          value={
-            summary.increase - summary.decrease >= 0
-              ? `+${summary.increase - summary.decrease}`
-              : `${summary.increase - summary.decrease}`
-          }
-          accent="text-white/80"
-        />
-      </div>
+      {/* サマリー: 上段=現在値（全体 / 未着手 / 要求定義）、下段=直近1か月の増減（同じ並び） */}
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <SummaryCard
+            label="現在の残数（未完了）"
+            value={`${summary.current}`}
+            accent={config.totalAccent}
+            sub={config.totalSub}
+          />
+          {summary.currentByStatus.map((c) => (
+            <SummaryCard
+              key={c.status}
+              label={`現在の${c.status}`}
+              value={summary.hasBreakdown ? `${c.count}` : "—"}
+              accent="text-white/80"
+              sub={summary.hasBreakdown ? "残数のうち" : "バックフィル後に表示"}
+            />
+          ))}
+          <FlowCard
+            label="直近1か月の増減（全体）"
+            flow={summary.total}
+            period={`${summary.windowFrom.slice(5)}〜${summary.windowTo.slice(5)}`}
+          />
+          {summary.byStatus.map((f) => (
+            <FlowCard
+              key={f.status}
+              label={`直近1か月の増減（${f.status}）`}
+              flow={f}
+              period={`${summary.windowFrom.slice(5)}〜${summary.windowTo.slice(5)}`}
+              disabled={!summary.hasBreakdown}
+            />
+          ))}
+        </div>
+      )}
 
       {stats.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center text-sm text-white/50">
