@@ -8,6 +8,9 @@ import { backfillDailyStats } from "@/lib/daily-stats-backfill";
 // CRON_SECRET で認証。service_role で RLS をバイパス。
 //
 //   curl -H "Authorization: Bearer $CRON_SECRET" "$BASE/api/petit-stats/backfill"
+// 全スナップショットを少しずつ読んで集計するので時間がかかる。Vercel の関数上限を広げる。
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

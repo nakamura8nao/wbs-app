@@ -127,26 +127,23 @@ function toProjectMap(data: unknown): Map<string, SnapProject> {
   return map;
 }
 
-export function computeDailyStats(
-  snapshots: RawSnapshot[],
-  target: StatsTarget
-): DayStat[] {
-  // 1日1件に集約（同日は created_at が最新のものを採用）
-  const byDate = new Map<string, RawSnapshot>();
-  for (const s of snapshots) {
-    if (!s.snapshot_date) continue;
-    const cur = byDate.get(s.snapshot_date);
-    if (!cur || s.created_at > cur.created_at) byDate.set(s.snapshot_date, s);
-  }
-  const days = [...byDate.values()].sort((a, b) =>
-    a.snapshot_date.localeCompare(b.snapshot_date)
-  );
+// スナップショットを日付順に1件ずつ受け取り、日次行を積み上げる逐次版。
+// バックフィルで全スナップショットを一度にメモリへ載せないために使う。
+//   - push は snapshot_date の昇順で呼ぶこと（同じ日付の中の順序は問わない。created_at が最新のものを採用）
+//   - drain で確定済みの行を取り出す（取り出した行は捨てる）。finish で最後の日を確定する
+export type DailyStatsAccumulator = {
+  push: (s: RawSnapshot) => void;
+  finish: () => void;
+  drain: () => DayStat[];
+};
 
+export function createDailyStatsAccumulator(target: StatsTarget): DailyStatsAccumulator {
   const rows: DayStat[] = [];
   let prevAll: Map<string, SnapProject> | null = null;
   let prevPop: Set<string> | null = null;
+  let pending: RawSnapshot | null = null; // まだ確定していない日の最終スナップショット
 
-  for (const day of days) {
+  const finalizeDay = (day: RawSnapshot) => {
     const all = toProjectMap(day.data);
     const pop = new Set<string>();
     const statusCounts: Record<string, number> = {};
@@ -228,9 +225,41 @@ export function computeDailyStats(
 
     prevAll = all;
     prevPop = pop;
-  }
+  
+  };
 
-  return rows;
+  return {
+    push(s) {
+      if (!s.snapshot_date) return;
+      if (pending && s.snapshot_date !== pending.snapshot_date) {
+        if (s.snapshot_date < pending.snapshot_date) {
+          throw new Error("snapshots must be pushed in snapshot_date ascending order");
+        }
+        finalizeDay(pending);
+        pending = null;
+      }
+      if (!pending || s.created_at > pending.created_at) pending = s;
+    },
+    finish() {
+      if (pending) finalizeDay(pending);
+      pending = null;
+    },
+    drain() {
+      return rows.splice(0, rows.length);
+    },
+  };
+}
+
+export function computeDailyStats(
+  snapshots: RawSnapshot[],
+  target: StatsTarget
+): DayStat[] {
+  const acc = createDailyStatsAccumulator(target);
+  for (const s of [...snapshots].sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date))) {
+    acc.push(s);
+  }
+  acc.finish();
+  return acc.drain();
 }
 
 // ---- 作り置き集計テーブル（*_daily_stats）との変換 ----
