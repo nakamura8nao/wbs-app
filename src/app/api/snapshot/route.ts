@@ -62,13 +62,14 @@ export async function GET(request: Request) {
   // プチ改善／改善タブの日次集計（作り置き）を更新する。
   // 今日の行だけ算出したいので直近の数日ぶんスナップショットを取り、前日との差分を出す。
   // computeDailyStats はウィンドウ先頭を基準日扱いするが、使うのは常に末尾＝今日の行なので影響しない。
+  // snapshots.data は重いので件数は絞る（多すぎると statement timeout に当たる）。
   const { data: recentSnaps } = await supabase
     .from("snapshots")
     .select("snapshot_date, created_at, data")
     .lte("snapshot_date", dateStr)
     .order("snapshot_date", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(5);
 
   for (const target of Object.values(STATS_TARGETS)) {
     const stats = computeDailyStats((recentSnaps ?? []) as RawSnapshot[], target);
