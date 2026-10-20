@@ -30,6 +30,9 @@ export type DecreaseItem = {
 export type DayStat = {
   date: string; // YYYY-MM-DD（同日に複数あれば最終スナップショット）
   total: number; // その日終わりの残数
+  // 残数のステータス別内訳（例: {"未着手": 5, "要求定義": 3, ...}）。合計は total に一致する。
+  // どのステータスを表に出すかはビュー側で選ぶ（HIGHLIGHT_STATUSES）。
+  statusCounts: Record<string, number>;
   isBaseline: boolean; // 最初のスナップショット。前日がないため増減は算出不可
   increase: number;
   decrease: number;
@@ -85,6 +88,9 @@ function placementOfSnap(p: SnapProject): Placement {
   });
 }
 
+// 残数のうち「まだ手が付いていない」ことを示すステータス。サマリー・表・グラフで内訳として出す。
+export const HIGHLIGHT_STATUSES = ["未着手", "要求定義"] as const;
+
 export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
   petit: {
     key: "petit",
@@ -136,14 +142,19 @@ export function computeDailyStats(
   for (const day of days) {
     const all = toProjectMap(day.data);
     const pop = new Set<string>();
+    const statusCounts: Record<string, number> = {};
     for (const [id, p] of all) {
-      if (target.isInPopulation(p)) pop.add(id);
+      if (!target.isInPopulation(p)) continue;
+      pop.add(id);
+      const st = p.status ?? "(不明)";
+      statusCounts[st] = (statusCounts[st] ?? 0) + 1;
     }
 
     if (!prevAll || !prevPop) {
       rows.push({
         date: day.snapshot_date,
         total: pop.size,
+        statusCounts,
         isBaseline: true,
         increase: 0,
         decrease: 0,
@@ -183,6 +194,7 @@ export function computeDailyStats(
       rows.push({
         date: day.snapshot_date,
         total: pop.size,
+        statusCounts,
         isBaseline: false,
         increase: increasedItems.length,
         decrease: decreasedItems.length,
@@ -206,6 +218,7 @@ export function computeDailyStats(
 export type DailyStatRow = {
   stat_date: string;
   total: number;
+  status_counts: Record<string, number>;
   is_baseline: boolean;
   increase: number;
   decrease: number;
@@ -221,6 +234,7 @@ export function dayStatToRow(s: DayStat): DailyStatRow {
   return {
     stat_date: s.date,
     total: s.total,
+    status_counts: s.statusCounts,
     is_baseline: s.isBaseline,
     increase: s.increase,
     decrease: s.decrease,
@@ -237,6 +251,7 @@ export function rowToDayStat(row: DailyStatRow): DayStat {
   return {
     date: row.stat_date,
     total: row.total,
+    statusCounts: row.status_counts ?? {}, // 列追加前の行は空（バックフィルで埋まる）
     isBaseline: row.is_baseline,
     increase: row.increase,
     decrease: row.decrease,
