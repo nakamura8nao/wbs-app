@@ -77,6 +77,8 @@ const KIND_LABEL: Record<IncreaseKind, string> = {
 };
 
 // 残数の推移を描くシンプルな折れ線グラフ（外部ライブラリなし・インラインSVG）
+// 横スクロールしても数値が読めるよう、y軸（目盛りの数値）はスクロール領域の外に固定で置き、
+// 折れ線だけを横スクロールさせる。両者は同じ高さ・同じ y 変換を使う。
 function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
   // 1日48px固定幅なので日数が増えると横スクロールになる。
   // 見たいのは直近なので、表示時は右端（最新日）までスクロールしておく。
@@ -88,7 +90,8 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
 
   if (stats.length === 0) return null;
 
-  const pad = { top: 16, right: 16, bottom: 28, left: 32 };
+  const pad = { top: 16, right: 16, bottom: 28, left: 16 };
+  const axisW = 32; // 固定表示するy軸の幅
   const stepX = 48;
   const innerW = Math.max((stats.length - 1) * stepX, stepX);
   const innerH = 140;
@@ -99,6 +102,7 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
   const x = (i: number) =>
     pad.left + (stats.length === 1 ? innerW / 2 : (i / (stats.length - 1)) * innerW);
   const y = (v: number) => pad.top + innerH - (v / maxTotal) * innerH;
+  const ticks = [0, maxTotal / 2, maxTotal];
 
   const points = stats.map((s, i) => `${x(i)},${y(s.total)}`).join(" ");
   const areaPath = `M ${x(0)},${pad.top + innerH} L ${points
@@ -106,55 +110,72 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
     .join(" L ")} L ${x(stats.length - 1)},${pad.top + innerH} Z`;
 
   return (
-    <div ref={scrollRef} className="overflow-x-auto">
-      <svg width={width} height={height} className="min-w-full">
-        {/* y軸グリッド（0 / 中間 / 最大） */}
-        {[0, maxTotal / 2, maxTotal].map((v, idx) => (
-          <g key={idx}>
+    <div className="flex">
+      {/* y軸（固定） */}
+      <svg width={axisW} height={height} className="shrink-0 bg-white">
+        {ticks.map((v, idx) => (
+          <text
+            key={idx}
+            x={axisW - 6}
+            y={y(v) + 3}
+            textAnchor="end"
+            className="fill-slate-400 text-[10px]"
+          >
+            {Math.round(v)}
+          </text>
+        ))}
+        <line
+          x1={axisW - 1}
+          y1={pad.top}
+          x2={axisW - 1}
+          y2={pad.top + innerH}
+          stroke="#e2e8f0"
+          strokeWidth={1}
+        />
+      </svg>
+
+      {/* 折れ線（横スクロール） */}
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        <svg width={width} height={height}>
+          {/* y軸グリッド（0 / 中間 / 最大） */}
+          {ticks.map((v, idx) => (
             <line
-              x1={pad.left}
+              key={idx}
+              x1={0}
               y1={y(v)}
-              x2={pad.left + innerW}
+              x2={width}
               y2={y(v)}
               stroke="#e2e8f0"
               strokeWidth={1}
             />
-            <text
-              x={pad.left - 6}
-              y={y(v) + 3}
-              textAnchor="end"
-              className="fill-slate-400 text-[10px]"
-            >
-              {Math.round(v)}
-            </text>
-          </g>
-        ))}
+          ))}
 
-        <path d={areaPath} fill={color} fillOpacity={0.08} />
-        <polyline
-          points={points}
-          fill="none"
-          stroke={color}
-          strokeWidth={2}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+          <path d={areaPath} fill={color} fillOpacity={0.08} />
+          <polyline
+            points={points}
+            fill="none"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
 
-        {stats.map((s, i) => (
-          <g key={s.date}>
-            <circle cx={x(i)} cy={y(s.total)} r={3} fill={color} />
-            {/* 日付は毎日出す（1日48px幅なので MM-DD が収まる） */}
-            <text
-              x={x(i)}
-              y={height - 8}
-              textAnchor="middle"
-              className="fill-slate-400 text-[10px]"
-            >
-              {s.date.slice(5)}
-            </text>
-          </g>
-        ))}
-      </svg>
+          {stats.map((s, i) => (
+            <g key={s.date}>
+              <circle cx={x(i)} cy={y(s.total)} r={3} fill={color} />
+              {/* 日付は毎日出す（1日48px幅なので MM-DD が収まる） */}
+              <text
+                x={x(i)}
+                y={height - 8}
+                textAnchor="middle"
+                className="fill-slate-400 text-[10px]"
+              >
+                {s.date.slice(5)}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }
