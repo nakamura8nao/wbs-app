@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -78,6 +78,14 @@ const KIND_LABEL: Record<IncreaseKind, string> = {
 
 // 残数の推移を描くシンプルな折れ線グラフ（外部ライブラリなし・インラインSVG）
 function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
+  // 1日48px固定幅なので日数が増えると横スクロールになる。
+  // 見たいのは直近なので、表示時は右端（最新日）までスクロールしておく。
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [stats.length]);
+
   if (stats.length === 0) return null;
 
   const pad = { top: 16, right: 16, bottom: 28, left: 32 };
@@ -97,11 +105,8 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
     .split(" ")
     .join(" L ")} L ${x(stats.length - 1)},${pad.top + innerH} Z`;
 
-  // x軸ラベルは詰まりすぎないよう間引く
-  const labelEvery = Math.ceil(stats.length / 12);
-
   return (
-    <div className="overflow-x-auto">
+    <div ref={scrollRef} className="overflow-x-auto">
       <svg width={width} height={height} className="min-w-full">
         {/* y軸グリッド（0 / 中間 / 最大） */}
         {[0, maxTotal / 2, maxTotal].map((v, idx) => (
@@ -138,16 +143,15 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
         {stats.map((s, i) => (
           <g key={s.date}>
             <circle cx={x(i)} cy={y(s.total)} r={3} fill={color} />
-            {i % labelEvery === 0 && (
-              <text
-                x={x(i)}
-                y={height - 8}
-                textAnchor="middle"
-                className="fill-slate-400 text-[10px]"
-              >
-                {s.date.slice(5)}
-              </text>
-            )}
+            {/* 日付は毎日出す（1日48px幅なので MM-DD が収まる） */}
+            <text
+              x={x(i)}
+              y={height - 8}
+              textAnchor="middle"
+              className="fill-slate-400 text-[10px]"
+            >
+              {s.date.slice(5)}
+            </text>
           </g>
         ))}
       </svg>
