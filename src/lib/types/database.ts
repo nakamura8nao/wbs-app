@@ -271,6 +271,8 @@ export type Database = {
         Row: {
           stat_date: string;
           total: number;
+          status_counts: Record<string, number>;
+          status_flows: Record<string, { increase: number; decrease: number }>;
           is_baseline: boolean;
           increase: number;
           decrease: number;
@@ -285,6 +287,8 @@ export type Database = {
         Insert: {
           stat_date: string;
           total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
           is_baseline?: boolean;
           increase?: number;
           decrease?: number;
@@ -298,6 +302,8 @@ export type Database = {
         };
         Update: {
           total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
           is_baseline?: boolean;
           increase?: number;
           decrease?: number;
@@ -314,6 +320,8 @@ export type Database = {
         Row: {
           stat_date: string;
           total: number;
+          status_counts: Record<string, number>;
+          status_flows: Record<string, { increase: number; decrease: number }>;
           is_baseline: boolean;
           increase: number;
           decrease: number;
@@ -328,6 +336,8 @@ export type Database = {
         Insert: {
           stat_date: string;
           total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
           is_baseline?: boolean;
           increase?: number;
           decrease?: number;
@@ -341,6 +351,8 @@ export type Database = {
         };
         Update: {
           total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
           is_baseline?: boolean;
           increase?: number;
           decrease?: number;

@@ -27,9 +27,19 @@ export type DecreaseItem = {
   reason: DecreaseReason;
 };
 
+export type StatusFlow = { increase: number; decrease: number };
+
 export type DayStat = {
   date: string; // YYYY-MM-DD（同日に複数あれば最終スナップショット）
   total: number; // その日終わりの残数
+  // 残数のステータス別内訳（例: {"未着手": 5, "要求定義": 3, ...}）。合計は total に一致する。
+  // どのステータスを表に出すかはビュー側で選ぶ（HIGHLIGHT_STATUSES）。
+  statusCounts: Record<string, number>;
+  // ステータス別の増減（前日比）。「未着手が何件増えて何件減ったか」を出すために持つ。
+  //   increase: その日 status=X として残数に入った件数（新規流入 + 他ステータスから X になった）
+  //   decrease: その日 status=X から抜けた件数（残数から出た + X から他ステータスへ進んだ）
+  // 残数全体の increase/decrease と違い、ステータス間の移動も両側に数える。基準日は空。
+  statusFlows: Record<string, StatusFlow>;
   isBaseline: boolean; // 最初のスナップショット。前日がないため増減は算出不可
   increase: number;
   decrease: number;
@@ -85,6 +95,9 @@ function placementOfSnap(p: SnapProject): Placement {
   });
 }
 
+// 残数のうち「まだ手が付いていない」ことを示すステータス。サマリー・表・グラフで内訳として出す。
+export const HIGHLIGHT_STATUSES = ["未着手", "要求定義"] as const;
+
 export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
   petit: {
     key: "petit",
@@ -136,14 +149,20 @@ export function computeDailyStats(
   for (const day of days) {
     const all = toProjectMap(day.data);
     const pop = new Set<string>();
+    const statusCounts: Record<string, number> = {};
     for (const [id, p] of all) {
-      if (target.isInPopulation(p)) pop.add(id);
+      if (!target.isInPopulation(p)) continue;
+      pop.add(id);
+      const st = p.status ?? "(不明)";
+      statusCounts[st] = (statusCounts[st] ?? 0) + 1;
     }
 
     if (!prevAll || !prevPop) {
       rows.push({
         date: day.snapshot_date,
         total: pop.size,
+        statusCounts,
+        statusFlows: {},
         isBaseline: true,
         increase: 0,
         decrease: 0,
@@ -180,9 +199,24 @@ export function computeDailyStats(
         });
       }
 
+      // ステータス別の増減。前日・当日それぞれの「残数内でのステータス」を比べ、
+      // 変わっていれば前日側を decrease、当日側を increase に数える（残数外は null 扱い）。
+      const statusFlows: Record<string, StatusFlow> = {};
+      const flowOf = (st: string) =>
+        (statusFlows[st] ??= { increase: 0, decrease: 0 });
+      for (const id of new Set([...prevPop, ...pop])) {
+        const prevSt = prevPop.has(id) ? (prevAll.get(id)?.status ?? "(不明)") : null;
+        const curSt = pop.has(id) ? (all.get(id)?.status ?? "(不明)") : null;
+        if (prevSt === curSt) continue;
+        if (prevSt !== null) flowOf(prevSt).decrease += 1;
+        if (curSt !== null) flowOf(curSt).increase += 1;
+      }
+
       rows.push({
         date: day.snapshot_date,
         total: pop.size,
+        statusCounts,
+        statusFlows,
         isBaseline: false,
         increase: increasedItems.length,
         decrease: decreasedItems.length,
@@ -206,6 +240,8 @@ export function computeDailyStats(
 export type DailyStatRow = {
   stat_date: string;
   total: number;
+  status_counts: Record<string, number>;
+  status_flows: Record<string, StatusFlow>;
   is_baseline: boolean;
   increase: number;
   decrease: number;
@@ -221,6 +257,8 @@ export function dayStatToRow(s: DayStat): DailyStatRow {
   return {
     stat_date: s.date,
     total: s.total,
+    status_counts: s.statusCounts,
+    status_flows: s.statusFlows,
     is_baseline: s.isBaseline,
     increase: s.increase,
     decrease: s.decrease,
@@ -237,6 +275,8 @@ export function rowToDayStat(row: DailyStatRow): DayStat {
   return {
     date: row.stat_date,
     total: row.total,
+    statusCounts: row.status_counts ?? {}, // 列追加前の行は空（バックフィルで埋まる）
+    statusFlows: row.status_flows ?? {},
     isBaseline: row.is_baseline,
     increase: row.increase,
     decrease: row.decrease,
