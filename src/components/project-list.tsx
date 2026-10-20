@@ -1968,6 +1968,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <span className="text-xs text-sky-700/70">
                 既存機能の価値を高め、日々の成果や業務効率を底上げする施策
               </span>
+              <Link
+                href="/improvement"
+                className="ml-auto flex items-center gap-1 rounded-md border border-sky-300 bg-white/60 px-2 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-white"
+              >
+                <TrendingUp size={13} />
+                増減の推移
+              </Link>
             </div>
           </div>
 

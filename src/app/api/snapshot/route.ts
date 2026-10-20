@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import {
-  computePetitStats,
-  petitDayStatToRow,
+  computeDailyStats,
+  dayStatToRow,
+  STATS_TARGETS,
   type RawSnapshot,
-} from "@/lib/petit-stats";
+} from "@/lib/daily-stats";
 
 // Cron から呼ばれる API。service_role key でRLSをバイパス。
 // CRON_SECRET で認証。
@@ -58,9 +59,9 @@ export async function GET(request: Request) {
     data: snapshotData,
   });
 
-  // プチ改善の日次集計（作り置き）を更新する。
+  // プチ改善／改善タブの日次集計（作り置き）を更新する。
   // 今日の行だけ算出したいので直近の数日ぶんスナップショットを取り、前日との差分を出す。
-  // computePetitStats はウィンドウ先頭を基準日扱いするが、使うのは常に末尾＝今日の行なので影響しない。
+  // computeDailyStats はウィンドウ先頭を基準日扱いするが、使うのは常に末尾＝今日の行なので影響しない。
   const { data: recentSnaps } = await supabase
     .from("snapshots")
     .select("snapshot_date, created_at, data")
@@ -69,13 +70,15 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  const stats = computePetitStats((recentSnaps ?? []) as RawSnapshot[]);
-  const todayStat = stats.find((s) => s.date === dateStr);
-  if (todayStat) {
-    await supabase.from("petit_daily_stats").upsert(
-      { ...petitDayStatToRow(todayStat), updated_at: new Date().toISOString() },
-      { onConflict: "stat_date" }
-    );
+  for (const target of Object.values(STATS_TARGETS)) {
+    const stats = computeDailyStats((recentSnaps ?? []) as RawSnapshot[], target);
+    const todayStat = stats.find((s) => s.date === dateStr);
+    if (todayStat) {
+      await supabase.from(target.table).upsert(
+        { ...dayStatToRow(todayStat), updated_at: new Date().toISOString() },
+        { onConflict: "stat_date" }
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, date: dateStr });
