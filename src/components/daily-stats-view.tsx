@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Sparkles,
+  Repeat,
   ArrowLeft,
   ArrowUp,
   ArrowDown,
@@ -12,30 +13,71 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
-  PetitDayStat,
-  PetitDecreaseReason,
-  PetitIncreaseKind,
-} from "@/lib/petit-stats";
+  DayStat,
+  DecreaseReason,
+  IncreaseKind,
+  StatsTargetKey,
+} from "@/lib/daily-stats";
 
-const REASON_LABEL: Record<PetitDecreaseReason, string> = {
-  published: "公開ずみ",
-  movedOut: "プチ改善外へ移動",
-  deleted: "削除",
+// タブごとの見た目・文言。Tailwind のクラスは静的文字列で持つ（動的生成だとビルドで落ちる）。
+type ViewConfig = {
+  title: string;
+  icon: typeof Sparkles;
+  iconClass: string;
+  chartTitle: string;
+  chartColor: string; // SVG の stroke/fill
+  totalSub: string;
+  totalAccent: string; // サマリーカードの残数の色
+  totalCellClass: string; // テーブルの残数セルの色
+  rowHoverClass: string;
+  movedOutLabel: string;
+  emptyMessage: string;
 };
 
-const REASON_STYLE: Record<PetitDecreaseReason, string> = {
+export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
+  petit: {
+    title: "プチ改善 増減の推移",
+    icon: Sparkles,
+    iconClass: "text-violet-400",
+    chartTitle: "残数の推移（未消化プチ改善）",
+    chartColor: "#8b5cf6",
+    totalSub: "ゼロを目指す母数",
+    totalAccent: "text-violet-300",
+    totalCellClass: "text-violet-600",
+    rowHoverClass: "hover:bg-violet-50/60",
+    movedOutLabel: "プチ改善外へ移動",
+    emptyMessage:
+      "スナップショットがまだありません。スナップショットが撮られると、ここに日次の増減が表示されます。",
+  },
+  improvement: {
+    title: "改善 増減の推移",
+    icon: Repeat,
+    iconClass: "text-sky-400",
+    chartTitle: "残数の推移（未完了の改善施策）",
+    chartColor: "#0ea5e9",
+    totalSub: "改善タブの未完了施策",
+    totalAccent: "text-sky-300",
+    totalCellClass: "text-sky-600",
+    rowHoverClass: "hover:bg-sky-50/60",
+    movedOutLabel: "改善外へ移動",
+    emptyMessage:
+      "集計がまだありません。日次スナップショット後、または /api/improvement-stats/backfill の実行後にここに表示されます。",
+  },
+};
+
+const REASON_STYLE: Record<DecreaseReason, string> = {
   published: "bg-emerald-50 text-emerald-700 border-emerald-200",
   movedOut: "bg-amber-50 text-amber-700 border-amber-200",
   deleted: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-const KIND_LABEL: Record<PetitIncreaseKind, string> = {
+const KIND_LABEL: Record<IncreaseKind, string> = {
   new: "新規",
   inflow: "流入",
 };
 
 // 残数の推移を描くシンプルな折れ線グラフ（外部ライブラリなし・インラインSVG）
-function TrendChart({ stats }: { stats: PetitDayStat[] }) {
+function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
   if (stats.length === 0) return null;
 
   const pad = { top: 16, right: 16, bottom: 28, left: 32 };
@@ -83,11 +125,11 @@ function TrendChart({ stats }: { stats: PetitDayStat[] }) {
           </g>
         ))}
 
-        <path d={areaPath} fill="#8b5cf6" fillOpacity={0.08} />
+        <path d={areaPath} fill={color} fillOpacity={0.08} />
         <polyline
           points={points}
           fill="none"
-          stroke="#8b5cf6"
+          stroke={color}
           strokeWidth={2}
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -95,7 +137,7 @@ function TrendChart({ stats }: { stats: PetitDayStat[] }) {
 
         {stats.map((s, i) => (
           <g key={s.date}>
-            <circle cx={x(i)} cy={y(s.total)} r={3} fill="#8b5cf6" />
+            <circle cx={x(i)} cy={y(s.total)} r={3} fill={color} />
             {i % labelEvery === 0 && (
               <text
                 x={x(i)}
@@ -135,7 +177,20 @@ function SummaryCard({
   );
 }
 
-export function PetitStatsView({ stats }: { stats: PetitDayStat[] }) {
+export function DailyStatsView({
+  stats,
+  target,
+}: {
+  stats: DayStat[];
+  target: StatsTargetKey;
+}) {
+  const config = VIEW_CONFIGS[target];
+  const Icon = config.icon;
+  const reasonLabel: Record<DecreaseReason, string> = {
+    published: "公開ずみ",
+    movedOut: config.movedOutLabel,
+    deleted: "削除",
+  };
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (date: string) =>
@@ -188,18 +243,18 @@ export function PetitStatsView({ stats }: { stats: PetitDayStat[] }) {
           施策一覧へ
         </Link>
         <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-violet-400" />
-          <h2 className="text-sm font-medium text-white">プチ改善 増減の推移</h2>
+          <Icon size={16} className={config.iconClass} />
+          <h2 className="text-sm font-medium text-white">{config.title}</h2>
         </div>
       </div>
 
       {/* サマリー */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard
-          label="現在の残数（未消化）"
+          label="現在の残数（未完了）"
           value={`${summary.current}`}
-          accent="text-violet-300"
-          sub="ゼロを目指す母数"
+          accent={config.totalAccent}
+          sub={config.totalSub}
         />
         <SummaryCard
           label="累計 増加"
@@ -225,16 +280,16 @@ export function PetitStatsView({ stats }: { stats: PetitDayStat[] }) {
 
       {stats.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center text-sm text-white/50">
-          スナップショットがまだありません。スナップショットが撮られると、ここに日次の増減が表示されます。
+          {config.emptyMessage}
         </div>
       ) : (
         <>
           {/* 残数の推移チャート */}
           <div className="rounded-xl border border-black/5 bg-white p-4">
             <div className="mb-2 text-xs font-medium text-black/60">
-              残数の推移（未消化プチ改善）
+              {config.chartTitle}
             </div>
-            <TrendChart stats={stats} />
+            <TrendChart stats={stats} color={config.chartColor} />
           </div>
 
           {/* 日次テーブル */}
@@ -259,6 +314,8 @@ export function PetitStatsView({ stats }: { stats: PetitDayStat[] }) {
                     <FragmentRow
                       key={r.date}
                       r={r}
+                      config={config}
+                      reasonLabel={reasonLabel}
                       isOpen={isOpen}
                       hasDetail={hasDetail}
                       onToggle={() => hasDetail && toggle(r.date)}
@@ -276,11 +333,15 @@ export function PetitStatsView({ stats }: { stats: PetitDayStat[] }) {
 
 function FragmentRow({
   r,
+  config,
+  reasonLabel,
   isOpen,
   hasDetail,
   onToggle,
 }: {
-  r: PetitDayStat;
+  r: DayStat;
+  config: ViewConfig;
+  reasonLabel: Record<DecreaseReason, string>;
   isOpen: boolean;
   hasDetail: boolean;
   onToggle: () => void;
@@ -290,7 +351,7 @@ function FragmentRow({
       <tr
         className={cn(
           "border-b border-black/5 transition-colors",
-          hasDetail && "cursor-pointer hover:bg-violet-50/60"
+          hasDetail && cn("cursor-pointer", config.rowHoverClass)
         )}
         onClick={onToggle}
       >
@@ -311,7 +372,7 @@ function FragmentRow({
             </span>
           )}
         </td>
-        <td className="px-3 py-2 text-right font-semibold tabular-nums text-violet-600">
+        <td className={cn("px-3 py-2 text-right font-semibold tabular-nums", config.totalCellClass)}>
           {r.total}
         </td>
         <td className="px-3 py-2 text-right tabular-nums">
@@ -350,7 +411,7 @@ function FragmentRow({
                   ["published", r.breakdown.published],
                   ["movedOut", r.breakdown.movedOut],
                   ["deleted", r.breakdown.deleted],
-                ] as [PetitDecreaseReason, number][]
+                ] as [DecreaseReason, number][]
               )
                 .filter(([, n]) => n > 0)
                 .map(([reason, n]) => (
@@ -361,7 +422,7 @@ function FragmentRow({
                       REASON_STYLE[reason]
                     )}
                   >
-                    {REASON_LABEL[reason]} {n}
+                    {reasonLabel[reason]} {n}
                   </span>
                 ))}
             </div>
@@ -409,7 +470,7 @@ function FragmentRow({
                             REASON_STYLE[it.reason]
                           )}
                         >
-                          {REASON_LABEL[it.reason]}
+                          {reasonLabel[it.reason]}
                         </span>
                         <span className="text-black/70">{it.title}</span>
                       </li>
