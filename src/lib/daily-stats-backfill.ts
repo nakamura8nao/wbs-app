@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  conflictKeyOf,
   createDailyStatsAccumulator,
   dayStatToRow,
   type RawSnapshot,
@@ -14,15 +15,17 @@ const FETCH_CHUNK = 10;
 const UPSERT_CHUNK = 100;
 
 // 既存の全スナップショットから集計テーブルを再計算して埋め戻す（upsert なので何度でも安全）。
+// 複数ターゲットを渡すとスナップショットを1回読むだけで全部を集計する（重い snapshots.data を何度も読まない）。
 // service_role のクライアントを渡すこと（RLS をバイパスして書き込む）。
 export async function backfillDailyStats(
   supabase: SupabaseClient,
-  target: StatsTarget
+  targets: StatsTarget | StatsTarget[]
 ): Promise<
   | { ok: true; upserted: number; snapshots: number; from?: string; to?: string }
   | { ok: false; error: string }
 > {
-  const acc = createDailyStatsAccumulator(target);
+  const list = Array.isArray(targets) ? targets : [targets];
+  const accs = list.map((target) => ({ target, acc: createDailyStatsAccumulator(target) }));
   const now = new Date().toISOString();
   let upserted = 0;
   let fetched = 0;
@@ -30,17 +33,19 @@ export async function backfillDailyStats(
   let to: string | undefined;
 
   const flush = async (final: boolean) => {
-    if (final) acc.finish();
-    const rows = acc.drain().map((s) => ({ ...dayStatToRow(s), updated_at: now }));
-    for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
-      const chunk = rows.slice(i, i + UPSERT_CHUNK);
-      const { error } = await supabase
-        .from(target.table)
-        .upsert(chunk, { onConflict: "stat_date" });
-      if (error) return error.message;
-      upserted += chunk.length;
-      from ??= chunk[0].stat_date;
-      to = chunk[chunk.length - 1].stat_date;
+    for (const { target, acc } of accs) {
+      if (final) acc.finish();
+      const rows = acc.drain().map((s) => ({ ...dayStatToRow(s, target), updated_at: now }));
+      for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+        const chunk = rows.slice(i, i + UPSERT_CHUNK);
+        const { error } = await supabase
+          .from(target.table)
+          .upsert(chunk, { onConflict: conflictKeyOf(target) });
+        if (error) return error.message;
+        upserted += chunk.length;
+        from ??= chunk[0].stat_date;
+        to = chunk[chunk.length - 1].stat_date;
+      }
     }
     return null;
   };
@@ -55,7 +60,7 @@ export async function backfillDailyStats(
     if (error) return { ok: false, error: error.message };
 
     const snaps = (data ?? []) as RawSnapshot[];
-    for (const s of snaps) acc.push(s);
+    for (const s of snaps) for (const { acc } of accs) acc.push(s);
     fetched += snaps.length;
 
     const flushError = await flush(false);

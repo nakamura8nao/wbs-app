@@ -120,7 +120,7 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     totalCellClass: "text-amber-600",
     rowHoverClass: "hover:bg-amber-50/60",
     publishedLabel: "要求定義完了",
-    movedOutLabel: "選択肢外のステータスへ",
+    movedOutLabel: "対象外へ移動（別タブなど）",
     emptyMessage:
       "集計がまだありません。日次スナップショット後、または /api/requirement-stats/backfill の実行後にここに表示されます。",
   },
@@ -515,9 +515,15 @@ function SummaryCard({
 export function DailyStatsView({
   stats,
   target,
+  toolbar,
+  totalSub,
 }: {
   stats: DayStat[];
   target: StatsTargetKey;
+  // 見出し行の右側に置く操作（要求定義のスコープ切り替えなど）
+  toolbar?: React.ReactNode;
+  // サマリーの「現在値」の補足文を差し替える（スコープで母数の説明が変わるとき）
+  totalSub?: string;
 }) {
   const config = VIEW_CONFIGS[target];
   const Icon = config.icon;
@@ -594,6 +600,7 @@ export function DailyStatsView({
           <Icon size={16} className={config.iconClass} />
           <h2 className="text-sm font-medium text-white">{config.title}</h2>
         </div>
+        {toolbar && <div className="ml-auto">{toolbar}</div>}
       </div>
 
       {/* サマリー: 上段=現在値（全体 / 未着手 / 要求定義）、下段=直近1か月の増減（同じ並び）
@@ -604,7 +611,7 @@ export function DailyStatsView({
             label={config.totalLabel}
             value={`${summary.current}`}
             accent={config.totalAccent}
-            sub={config.totalSub}
+            sub={totalSub ?? config.totalSub}
           />
           {showCompleted && (
             <>

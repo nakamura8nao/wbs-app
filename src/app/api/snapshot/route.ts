@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import {
+  ALL_STATS_TARGETS,
   computeDailyStats,
+  conflictKeyOf,
   dayStatToRow,
-  STATS_TARGETS,
   type RawSnapshot,
 } from "@/lib/daily-stats";
 
@@ -71,13 +72,13 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .limit(5);
 
-  for (const target of Object.values(STATS_TARGETS)) {
+  for (const target of ALL_STATS_TARGETS) {
     const stats = computeDailyStats((recentSnaps ?? []) as RawSnapshot[], target);
     const todayStat = stats.find((s) => s.date === dateStr);
     if (todayStat) {
       await supabase.from(target.table).upsert(
-        { ...dayStatToRow(todayStat), updated_at: new Date().toISOString() },
-        { onConflict: "stat_date" }
+        { ...dayStatToRow(todayStat, target), updated_at: new Date().toISOString() },
+        { onConflict: conflictKeyOf(target) }
       );
     }
   }
