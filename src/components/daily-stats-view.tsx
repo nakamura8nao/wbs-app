@@ -318,6 +318,120 @@ function TrendChart({
   );
 }
 
+// YYYY-MM-DD を含む週の月曜日（YYYY-MM-DD）。週別集計のキーに使う
+function weekStartOf(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const offset = (d.getUTCDay() + 6) % 7; // 月=0 … 日=6
+  d.setUTCDate(d.getUTCDate() - offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+type WeekBucket = { weekStart: string; completed: number; partial: boolean };
+
+// 日次行を週（月曜始まり）ごとに束ねて完了（published）を合計する。
+// 行が無い週も 0 で埋めて並べる（横軸を等間隔にするため）。最新行を含む週は集計途中なので partial。
+function weeklyCompleted(stats: DayStat[]): WeekBucket[] {
+  const rows = stats.filter((s) => !s.isBaseline);
+  if (rows.length === 0) return [];
+  const sums = new Map<string, number>();
+  for (const s of rows) {
+    const key = weekStartOf(s.date);
+    sums.set(key, (sums.get(key) ?? 0) + s.breakdown.published);
+  }
+  const first = weekStartOf(rows[0].date);
+  const latest = rows[rows.length - 1].date;
+  const lastWeek = weekStartOf(latest);
+  const out: WeekBucket[] = [];
+  for (let w = first; w <= lastWeek; w = addDays(w, 7)) {
+    out.push({ weekStart: w, completed: sums.get(w) ?? 0, partial: w === lastWeek });
+  }
+  return out;
+}
+
+// 週別の完了数の棒グラフ（インラインSVG）。折れ線と同じく y 軸を固定し、棒だけ横スクロールする。
+// 1系列なので凡例は出さず、各棒の上に件数を直接書く。集計途中の週は薄く塗る。
+function WeeklyBarChart({ weeks, color, label }: { weeks: WeekBucket[]; color: string; label: string }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [weeks.length]);
+
+  if (weeks.length === 0) return null;
+
+  const pad = { top: 18, right: 12, bottom: 28, left: 12 };
+  const axisW = 32;
+  const stepX = 44;
+  const barW = 24;
+  const innerH = 120;
+  const width = pad.left + weeks.length * stepX + pad.right;
+  const height = pad.top + innerH + pad.bottom;
+  const max = Math.max(1, ...weeks.map((w) => w.completed));
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH;
+  const x = (i: number) => pad.left + i * stepX + (stepX - barW) / 2;
+  const ticks = [0, max / 2, max];
+
+  return (
+    <div className="flex">
+      <svg width={axisW} height={height} className="shrink-0 bg-white">
+        {ticks.map((v, idx) => (
+          <text key={idx} x={axisW - 6} y={y(v) + 3} textAnchor="end" className="fill-slate-400 text-[10px]">
+            {Math.round(v)}
+          </text>
+        ))}
+        <line x1={axisW - 1} y1={pad.top} x2={axisW - 1} y2={pad.top + innerH} stroke="#e2e8f0" strokeWidth={1} />
+      </svg>
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        <svg width={width} height={height}>
+          {ticks.map((v, idx) => (
+            <line key={idx} x1={0} y1={y(v)} x2={width} y2={y(v)} stroke="#e2e8f0" strokeWidth={1} />
+          ))}
+          {weeks.map((w, i) => {
+            const h = pad.top + innerH - y(w.completed);
+            return (
+              <g key={w.weekStart}>
+                <title>
+                  {`${w.weekStart.slice(5).replace("-", "/")}週${w.partial ? "（集計中）" : ""}: ${label} ${w.completed}件`}
+                </title>
+                {/* 当たり判定を棒より広く取る（ホバーで title が出る） */}
+                <rect x={pad.left + i * stepX} y={pad.top} width={stepX} height={innerH} fill="transparent" />
+                {w.completed > 0 && (
+                  <rect
+                    x={x(i)}
+                    y={y(w.completed)}
+                    width={barW}
+                    height={h}
+                    rx={3}
+                    fill={color}
+                    fillOpacity={w.partial ? 0.4 : 0.85}
+                  />
+                )}
+                <text
+                  x={x(i) + barW / 2}
+                  y={y(w.completed) - 4}
+                  textAnchor="middle"
+                  className={cn("text-[10px]", w.completed > 0 ? "fill-slate-600" : "fill-slate-300")}
+                >
+                  {w.completed}
+                </text>
+                <text x={x(i) + barW / 2} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
+                  {w.weekStart.slice(5).replace("-", "/")}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // YYYY-MM-DD の1か月前（同日）を返す。月末の日付は Date の繰り上げに任せる（例: 03-31 → 03-03 は許容）
 function monthAgo(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -415,6 +529,7 @@ export function DailyStatsView({
   const statusSeries = config.statusSeries;
   const showCompleted = config.focus === "completed";
   const cumulative = useMemo(() => cumulativePublishedByDate(stats), [stats]);
+  const weeks = useMemo(() => (showCompleted ? weeklyCompleted(stats) : []), [stats, showCompleted]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (date: string) =>
@@ -546,6 +661,17 @@ export function DailyStatsView({
             </div>
             <TrendChart stats={stats} config={config} cumulative={cumulative} />
           </div>
+
+          {/* 週別の完了数（completed のときだけ） */}
+          {showCompleted && weeks.length > 0 && (
+            <div className="rounded-xl border border-black/5 bg-white p-4">
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-xs">
+                <span className="font-medium text-black/60">週別の{config.publishedLabel}（月曜始まり）</span>
+                <span className="text-[11px] text-black/40">最新の週は集計途中（薄い棒）</span>
+              </div>
+              <WeeklyBarChart weeks={weeks} color={COMPLETED_COLOR} label={config.publishedLabel} />
+            </div>
+          )}
 
           {/* 日次テーブル */}
           <div className="overflow-hidden rounded-xl border border-black/5 bg-white">
