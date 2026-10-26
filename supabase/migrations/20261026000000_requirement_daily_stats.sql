@@ -6,13 +6,13 @@
 -- 書き込みは cron（/api/snapshot）とバックフィル（/api/requirement-stats/backfill）から
 -- service_role で行う（RLSをバイパス）。読み取りはログインユーザー全員（チーム共有の集計）。
 --
--- 母数の定義: 置き場所（投資/改善/プチ改善/ABテスト）を問わず status = '要求定義'
---             （施策一覧の要求定義ビューと同じ母数）
+-- 母数の定義: 置き場所（投資/改善/プチ改善/ABテスト）を問わず status が要求定義以前
+--             （未着手 / 調査 / 要求定義）＝要求定義が未完了の施策
 -- 減少内訳: published=要求定義より後ろのステータス（要件定義以降・ABテスト中・完了）へ進んだ＝要求定義完了
---           moved_out=要求定義より前のステータス（未着手/調査）へ戻った
+--           moved_out=選択肢に無いステータスになった（通常は起きない）
 --           deleted=レコード削除
--- 増加内訳（increased_items.kind）: new=新規作成でいきなり要求定義 / inflow=他ステータスから要求定義へ
--- status_counts / status_flows は列構成を揃えるために持つだけ（母数が単一ステータスなので実質使わない）
+-- 増加内訳（increased_items.kind）: new=新規作成 / inflow=完了などから未着手〜要求定義へ戻った
+-- status_counts: 母数の内訳（未着手 / 調査 / 要求定義）。status_flows: その前日比
 --
 -- 初回は作成後にバックフィルを一度流す:
 --   curl -H "Authorization: Bearer $CRON_SECRET" "$BASE/api/requirement-stats/backfill"

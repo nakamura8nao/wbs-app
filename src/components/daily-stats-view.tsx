@@ -30,6 +30,13 @@ const BACKLOG_STATUS_SERIES: StatusSeries[] = [
   { status: HIGHLIGHT_STATUSES[1], color: "#f59e0b", cellClass: "text-amber-600" },
 ];
 
+// 要求定義未完了の内訳（未着手 / 調査 / 要求定義）。STATUS_OPTIONS の並び順。
+const REQUIREMENT_STATUS_SERIES: StatusSeries[] = [
+  { status: "未着手", color: "#94a3b8", cellClass: "text-slate-500" },
+  { status: "調査", color: "#38bdf8", cellClass: "text-sky-600" },
+  { status: "要求定義", color: "#f59e0b", cellClass: "text-amber-600" },
+];
+
 // 「完了（published）」の累計を折れ線で重ねるときの色（要求定義の推移で使う）
 const COMPLETED_COLOR = "#10b981";
 
@@ -44,9 +51,10 @@ type ViewConfig = {
   chartColor: string; // SVG の stroke/fill
   // 何を主役に見せるか。
   //   remaining : 残数をゼロに近づける見方（タブの推移）。内訳ステータスの折れ線とカードを出す
-  //   completed : 日々の完了数（published）を追う見方（要求定義の推移）。完了数と累計の列・折れ線を出す
+  //   completed : 日々の完了数（published）を追う見方（要求定義の推移）。完了数と累計の列・折れ線を出し、
+  //               サマリーは内訳ステータスごとのカードを出さず、完了数のカードに置き換える
   focus: "remaining" | "completed";
-  statusSeries: StatusSeries[]; // 残数の内訳として出すステータス（completed では空）
+  statusSeries: StatusSeries[]; // 残数の内訳として出すステータス（表の列・グラフの破線）
   totalLabel: string; // サマリーカードの「現在値」の見出し
   totalColumnLabel: string; // テーブルの残数列の見出し
   totalSub: string;
@@ -101,18 +109,18 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     title: "要求定義 完了数の推移",
     icon: ClipboardList,
     iconClass: "text-amber-400",
-    chartTitle: "要求定義中の件数と、要求定義完了の累計",
+    chartTitle: "要求定義未完了の件数と、要求定義完了の累計",
     chartColor: "#f59e0b",
     focus: "completed",
-    statusSeries: [],
-    totalLabel: "現在の要求定義中",
-    totalColumnLabel: "要求定義中",
-    totalSub: "置き場所を問わずステータスが要求定義の施策",
+    statusSeries: REQUIREMENT_STATUS_SERIES,
+    totalLabel: "現在の要求定義未完了",
+    totalColumnLabel: "未完了",
+    totalSub: "置き場所を問わず未着手・調査・要求定義の施策",
     totalAccent: "text-amber-300",
     totalCellClass: "text-amber-600",
     rowHoverClass: "hover:bg-amber-50/60",
     publishedLabel: "要求定義完了",
-    movedOutLabel: "未着手/調査へ戻った",
+    movedOutLabel: "選択肢外のステータスへ",
     emptyMessage:
       "集計がまだありません。日次スナップショット後、または /api/requirement-stats/backfill の実行後にここに表示されます。",
   },
@@ -499,7 +507,7 @@ export function DailyStatsView({
               />
             </>
           )}
-          {summary.currentByStatus.map((c) => (
+          {!showCompleted && summary.currentByStatus.map((c) => (
             <SummaryCard
               key={c.status}
               label={`現在の${c.status}`}
@@ -513,7 +521,7 @@ export function DailyStatsView({
             flow={summary.total}
             period={`${summary.windowFrom.slice(5)}〜${summary.windowTo.slice(5)}`}
           />
-          {summary.byStatus.map((f) => (
+          {!showCompleted && summary.byStatus.map((f) => (
             <FlowCard
               key={f.status}
               label={`直近1か月の増減（${f.status}）`}

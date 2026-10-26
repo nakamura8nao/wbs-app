@@ -3,13 +3,13 @@
 // 「残数」の定義は集計対象ごとに STATS_TARGETS で持つ（施策一覧の各ビューと同じ母数）。
 //   - petit       : is_petit_improvement = true かつ status != 完了
 //   - improvement : 置き場所が改善（track=improvement でプチ改善/ABテストのフラグなし）かつ status != 完了
-//   - requirement : 置き場所を問わず status = 要求定義（要求定義ビューと同じ母数）
+//   - requirement : 置き場所を問わず status が要求定義以前（未着手/調査/要求定義）＝要求定義が未完了
 //
 // 前日→当日でこの母数から抜けた施策を「減少」とし、内訳を判定する:
 //   - published : 置き場所は変わらず status が「完了」になった（＝消化完了・公開ずみ）
 //                 requirement では「要求定義より後ろのステータスへ進んだ」＝要求定義完了
 //   - movedOut  : 置き場所が変わった（別タブへ移動）
-//                 requirement では「要求定義より前のステータス（未着手/調査）へ戻った」
+//                 requirement では「選択肢に無いステータスになった」（通常は起きない）
 //   - deleted   : レコードごと削除された
 // 母数に新しく入った施策を「増加」とし、new（新規作成）/ inflow（既存からの流入）を区別する。
 
@@ -107,14 +107,21 @@ function placementOfSnap(p: SnapProject): Placement {
 // 残数のうち「まだ手が付いていない」ことを示すステータス。サマリー・表・グラフで内訳として出す。
 export const HIGHLIGHT_STATUSES = ["未着手", "要求定義"] as const;
 
-// ステータスが「要求定義」より後ろ（要件定義以降・ABテスト中・完了）か。
-// 要求定義から抜けた施策がここに該当すれば「要求定義完了」、そうでなければ「戻った」とみなす。
-// STATUS_OPTIONS に無い値（将来の追加漏れなど）は完了とは数えない（安全側）。
+// ステータスの並び（STATUS_OPTIONS）での「要求定義」の位置。
+// 要求定義以前（未着手/調査/要求定義）＝要求定義が未完了、後ろ（要件定義以降・ABテスト中・完了）＝要求定義完了。
+// STATUS_OPTIONS に無い値（将来の追加漏れなど）はどちらにも入れない（安全側）。
 const REQUIREMENT_INDEX = STATUS_OPTIONS.indexOf("要求定義");
+const statusIndex = (status: string | undefined) =>
+  (STATUS_OPTIONS as readonly string[]).indexOf(status ?? "");
+
+export function isRequirementPending(status: string | undefined): boolean {
+  const i = statusIndex(status);
+  return i >= 0 && i <= REQUIREMENT_INDEX;
+}
+
 export function isPastRequirement(status: string | undefined): boolean {
   if (status === AB_TEST_STATUS) return true;
-  const i = (STATUS_OPTIONS as readonly string[]).indexOf(status ?? "");
-  return i > REQUIREMENT_INDEX;
+  return statusIndex(status) > REQUIREMENT_INDEX;
 }
 
 export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
@@ -134,9 +141,10 @@ export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
   requirement: {
     key: "requirement",
     table: "requirement_daily_stats",
-    // 置き場所（投資/改善/プチ改善/ABテスト）を問わず、いま要求定義を書いている施策
-    isInPopulation: (p) => p.status === "要求定義",
-    // 要求定義より前へ戻った＝movedOut。後ろへ進んだ＝published（要求定義完了）
+    // 置き場所（投資/改善/プチ改善/ABテスト）を問わず、要求定義がまだ終わっていない施策
+    // （未着手/調査も「要求定義未完了」として母数に入れる）
+    isInPopulation: (p) => isRequirementPending(p.status),
+    // 要求定義より後ろへ進んだ＝published（要求定義完了）。それ以外で母数から抜けた＝movedOut（選択肢外のステータス）
     isMovedOut: (p) => !isPastRequirement(p.status),
   },
 };
