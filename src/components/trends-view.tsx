@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STATS_SCOPES, type StatsScope } from "@/lib/daily-stats";
+import { groupByWeek, weekLabel } from "@/lib/weeks";
 import { ScopeToggle } from "@/components/scope-toggle";
 
 // 推移ページの1日分。backlog（全案件）と requirement（要求定義）の軽量な数だけを持つ。
@@ -29,6 +30,37 @@ const SERIES = {
 } as const;
 
 const mmdd = (date: string) => date.slice(5).replace("-", "/");
+
+// 週次の1点。未完了数はその週の最後の日の値、完了数はその週の合計
+type WeekPoint = {
+  weekStart: string;
+  partial: boolean; // 最新の週（集計途中）
+  lastDate: string; // 未完了数を取った日
+  backlogTotal: number | null;
+  requirementTotal: number | null;
+  backlogDone: number;
+  requirementDone: number;
+};
+
+function toWeeks(rows: TrendRow[]): WeekPoint[] {
+  return groupByWeek(rows).map((w) => {
+    const last = [...w.rows].reverse().find((r) => r.backlog || r.requirement) ?? null;
+    const sum = (pick: (r: TrendRow) => TrendMetric | null) =>
+      w.rows.reduce((acc, r) => {
+        const m = pick(r);
+        return acc + (m && !m.isBaseline ? m.published : 0);
+      }, 0);
+    return {
+      weekStart: w.weekStart,
+      partial: w.partial,
+      lastDate: last?.date ?? w.weekStart,
+      backlogTotal: last?.backlog?.total ?? null,
+      requirementTotal: last?.requirement?.total ?? null,
+      backlogDone: sum((r) => r.backlog),
+      requirementDone: sum((r) => r.requirement),
+    };
+  });
+}
 
 function monthAgo(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -76,25 +108,25 @@ function YAxis({ ticks, y, height, pad }: { ticks: number[]; y: (v: number) => n
   );
 }
 
-// 未完了数の折れ線（案件全体と要求定義を同じ軸に重ねる）
-function RemainingChart({ rows }: { rows: TrendRow[] }) {
-  const ref = useScrollToEnd(rows.length);
-  if (rows.length === 0) return null;
+// 未完了数の折れ線（週次。各週の最後の日の値。案件全体と要求定義を同じ軸に重ねる）
+function RemainingChart({ weeks }: { weeks: WeekPoint[] }) {
+  const ref = useScrollToEnd(weeks.length);
+  if (weeks.length === 0) return null;
 
   const pad = { top: 16, right: 16, bottom: 28, left: 16 };
   const stepX = 48;
-  const innerW = Math.max((rows.length - 1) * stepX, stepX);
+  const innerW = Math.max((weeks.length - 1) * stepX, stepX);
   const innerH = 140;
   const width = pad.left + innerW + pad.right;
   const height = pad.top + innerH + pad.bottom;
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.backlog?.total ?? 0, r.requirement?.total ?? 0)));
-  const x = (i: number) => pad.left + (rows.length === 1 ? innerW / 2 : (i / (rows.length - 1)) * innerW);
+  const max = Math.max(1, ...weeks.map((w) => Math.max(w.backlogTotal ?? 0, w.requirementTotal ?? 0)));
+  const x = (i: number) => pad.left + (weeks.length === 1 ? innerW / 2 : (i / (weeks.length - 1)) * innerW);
   const y = (v: number) => pad.top + innerH - (v / max) * innerH;
   const ticks = [0, max / 2, max];
-  const line = (pick: (r: TrendRow) => number | null) =>
-    rows
-      .map((r, i) => {
-        const v = pick(r);
+  const line = (pick: (w: WeekPoint) => number | null) =>
+    weeks
+      .map((w, i) => {
+        const v = pick(w);
         return v === null ? null : `${x(i)},${y(v)}`;
       })
       .filter((p): p is string => p !== null)
@@ -110,16 +142,16 @@ function RemainingChart({ rows }: { rows: TrendRow[] }) {
             {ticks.map((v, idx) => (
               <line key={idx} x1={0} y1={y(v)} x2={width} y2={y(v)} stroke="#e2e8f0" strokeWidth={1} />
             ))}
-            <polyline points={line((r) => r.backlog?.total ?? null)} fill="none" stroke={SERIES.backlog.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            <polyline points={line((r) => r.requirement?.total ?? null)} fill="none" stroke={SERIES.requirement.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            {rows.map((r, i) => (
-              <g key={r.date}>
-                <title>{`${mmdd(r.date)}  未完了 ${r.backlog?.total ?? "—"} / 要求定義未完了 ${r.requirement?.total ?? "—"}`}</title>
+            <polyline points={line((w) => w.backlogTotal)} fill="none" stroke={SERIES.backlog.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <polyline points={line((w) => w.requirementTotal)} fill="none" stroke={SERIES.requirement.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            {weeks.map((w, i) => (
+              <g key={w.weekStart}>
+                <title>{`${weekLabel(w.weekStart)}週（${mmdd(w.lastDate)}時点${w.partial ? "・集計中" : ""}）  未完了 ${w.backlogTotal ?? "—"} / 要求定義未完了 ${w.requirementTotal ?? "—"}`}</title>
                 <rect x={x(i) - stepX / 2} y={pad.top} width={stepX} height={innerH} fill="transparent" />
-                {r.backlog && <circle cx={x(i)} cy={y(r.backlog.total)} r={3} fill={SERIES.backlog.color} />}
-                {r.requirement && <circle cx={x(i)} cy={y(r.requirement.total)} r={3} fill={SERIES.requirement.color} />}
+                {w.backlogTotal !== null && <circle cx={x(i)} cy={y(w.backlogTotal)} r={3} fill={SERIES.backlog.color} fillOpacity={w.partial ? 0.5 : 1} />}
+                {w.requirementTotal !== null && <circle cx={x(i)} cy={y(w.requirementTotal)} r={3} fill={SERIES.requirement.color} fillOpacity={w.partial ? 0.5 : 1} />}
                 <text x={x(i)} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
-                  {r.date.slice(5)}
+                  {weekLabel(w.weekStart)}
                 </text>
               </g>
             ))}
@@ -130,26 +162,25 @@ function RemainingChart({ rows }: { rows: TrendRow[] }) {
   );
 }
 
-// 日別の完了数の棒（案件全体の完了と要求定義完了を日ごとに並べる）
-function CompletedChart({ rows }: { rows: TrendRow[] }) {
-  const ref = useScrollToEnd(rows.length);
-  const days = rows.filter((r) => !(r.backlog?.isBaseline ?? r.requirement?.isBaseline ?? true));
-  if (days.length === 0) return null;
+// 週別の完了数の棒（案件全体の完了と要求定義完了を週ごとに並べる。最新の週は集計途中なので薄く）
+function CompletedChart({ weeks }: { weeks: WeekPoint[] }) {
+  const ref = useScrollToEnd(weeks.length);
+  if (weeks.length === 0) return null;
 
   const pad = { top: 18, right: 12, bottom: 28, left: 12 };
   const stepX = 48;
   const barW = 14;
   const innerH = 120;
-  const width = pad.left + days.length * stepX + pad.right;
+  const width = pad.left + weeks.length * stepX + pad.right;
   const height = pad.top + innerH + pad.bottom;
-  const max = Math.max(1, ...days.map((r) => Math.max(r.backlog?.published ?? 0, r.requirement?.published ?? 0)));
+  const max = Math.max(1, ...weeks.map((w) => Math.max(w.backlogDone, w.requirementDone)));
   const y = (v: number) => pad.top + innerH - (v / max) * innerH;
   const ticks = [0, max / 2, max];
-  const bar = (i: number, slot: 0 | 1, v: number, color: string) => {
+  const bar = (i: number, slot: 0 | 1, v: number, color: string, partial: boolean) => {
     const x = pad.left + i * stepX + (stepX - barW * 2 - 2) / 2 + slot * (barW + 2);
     return (
       <>
-        {v > 0 && <rect x={x} y={y(v)} width={barW} height={pad.top + innerH - y(v)} rx={3} fill={color} fillOpacity={0.85} />}
+        {v > 0 && <rect x={x} y={y(v)} width={barW} height={pad.top + innerH - y(v)} rx={3} fill={color} fillOpacity={partial ? 0.4 : 0.85} />}
         <text x={x + barW / 2} y={y(v) - 4} textAnchor="middle" className={cn("text-[10px]", v > 0 ? "fill-slate-600" : "fill-slate-300")}>
           {v}
         </text>
@@ -167,14 +198,14 @@ function CompletedChart({ rows }: { rows: TrendRow[] }) {
             {ticks.map((v, idx) => (
               <line key={idx} x1={0} y1={y(v)} x2={width} y2={y(v)} stroke="#e2e8f0" strokeWidth={1} />
             ))}
-            {days.map((r, i) => (
-              <g key={r.date}>
-                <title>{`${mmdd(r.date)}  完了 ${r.backlog?.published ?? "—"} / 要求定義完了 ${r.requirement?.published ?? "—"}`}</title>
+            {weeks.map((w, i) => (
+              <g key={w.weekStart}>
+                <title>{`${weekLabel(w.weekStart)}週${w.partial ? "（集計中）" : ""}  完了 ${w.backlogDone} / 要求定義完了 ${w.requirementDone}`}</title>
                 <rect x={pad.left + i * stepX} y={pad.top} width={stepX} height={innerH} fill="transparent" />
-                {bar(i, 0, r.backlog?.published ?? 0, SERIES.backlog.color)}
-                {bar(i, 1, r.requirement?.published ?? 0, SERIES.requirement.color)}
+                {bar(i, 0, w.backlogDone, SERIES.backlog.color, w.partial)}
+                {bar(i, 1, w.requirementDone, SERIES.requirement.color, w.partial)}
                 <text x={pad.left + i * stepX + stepX / 2} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
-                  {r.date.slice(5)}
+                  {weekLabel(w.weekStart)}
                 </text>
               </g>
             ))}
@@ -232,6 +263,7 @@ export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, Tr
   }, [rows]);
 
   const desc = useMemo(() => [...rows].reverse(), [rows]);
+  const weeks = useMemo(() => toWeeks(rows), [rows]);
   const thead = "border-b border-black/5 text-left text-[11px] font-medium text-black/60";
 
   return (
@@ -263,12 +295,18 @@ export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, Tr
       ) : (
         <>
           <div className="rounded-xl border border-black/5 bg-white p-4">
-            <div className="mb-2 text-xs font-medium text-black/60">未完了数の推移</div>
-            <RemainingChart rows={rows} />
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="font-medium text-black/60">未完了数の推移（週次・月曜始まり）</span>
+              <span className="text-[11px] text-black/40">各週の最後のスナップショット時点の件数。最新の週は集計途中</span>
+            </div>
+            <RemainingChart weeks={weeks} />
           </div>
           <div className="rounded-xl border border-black/5 bg-white p-4">
-            <div className="mb-2 text-xs font-medium text-black/60">日別の完了数（前日からの差分）</div>
-            <CompletedChart rows={rows} />
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="font-medium text-black/60">週別の完了数（月曜始まり）</span>
+              <span className="text-[11px] text-black/40">週内の「前日から完了した数」の合計。最新の週は集計途中（薄い棒）</span>
+            </div>
+            <CompletedChart weeks={weeks} />
           </div>
 
           <div className="overflow-hidden rounded-xl border border-black/5 bg-white">
