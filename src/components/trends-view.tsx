@@ -2,30 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { TrendingUp } from "lucide-react";
+import { ChevronDown, Loader2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STATS_SCOPES, type IncreaseKind, type StatsScope } from "@/lib/daily-stats";
 import { groupByWeek, weekLabel } from "@/lib/weeks";
+import {
+  TABLE_PAGE_DAYS,
+  type TrendMetric,
+  type TrendRow,
+  type TrendRowsByScope,
+  type TrendsPageResponse,
+} from "@/lib/trends";
 import { ScopeToggle } from "@/components/scope-toggle";
 
-// 推移ページの1日分。backlog（全案件）と requirement（要求定義）の軽量な数だけを持つ。
-// どちらかの集計が無い日は null（バックフィル前など）。
-export type TrendMetric = {
-  total: number; // その日終わりの未完了数
-  published: number; // 前日から完了した数
-  increase: number; // 前日から増えた数
-  isBaseline: boolean; // 最初の日。前日が無いので完了・増加は出せない
-  publishedTitles: string[]; // 完了した施策名（ホバーで出す）
-  increasedItems: { title: string; kind: IncreaseKind }[]; // 増えた施策名と区分（新規／流入）
-};
-
 const KIND_LABEL: Record<IncreaseKind, string> = { new: "新規", inflow: "流入" };
-
-export type TrendRow = {
-  date: string; // YYYY-MM-DD
-  backlog: TrendMetric | null;
-  requirement: TrendMetric | null;
-};
 
 // 系列の色。案件全体＝sky、要求定義＝amber（要求定義ページの残数の色と同じ）
 const SERIES = {
@@ -241,7 +231,12 @@ function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published"
       : m.increasedItems.map((it) => ({ title: it.title, tag: KIND_LABEL[it.kind] }));
   const colorClass = v === 0 ? "text-black/25" : tone === "good" ? "text-emerald-600" : "text-rose-500";
   if (items.length === 0) {
-    return <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>{v}</td>;
+    // ホバーのあるセルはボタンに px-1 が付くので、無いセルも同じ幅の余白を入れて数字の位置を揃える
+    return (
+      <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>
+        <span className="inline-block px-1">{v}</span>
+      </td>
+    );
   }
   return (
     <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>
@@ -263,6 +258,7 @@ function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published"
           <ul className="max-h-56 space-y-1 overflow-y-auto">
             {items.map((it, i) => (
               <li key={i} className="flex items-start gap-1.5">
+                <span className="shrink-0 text-black/40" aria-hidden="true">・</span>
                 {it.tag && (
                   <span className="shrink-0 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-600">{it.tag}</span>
                 )}
@@ -276,10 +272,53 @@ function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published"
   );
 }
 
-export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, TrendRow[]> }) {
+export function TrendsView({
+  rowsByScope,
+  initialTableRowsByScope,
+  initialTableFrom,
+}: {
+  // 数字だけの全期間（グラフ・サマリー用）
+  rowsByScope: TrendRowsByScope;
+  // 施策名込みの直近ぶん（表用）。「もっと見る」で /api/trends から古い日を足していく
+  initialTableRowsByScope: TrendRowsByScope;
+  // 表に読み込み済みの最古の日付（これより前が未読）。null は全期間読み込み済み
+  initialTableFrom: string | null;
+}) {
   const [scope, setScope] = useState<StatsScope>("all");
   const rows = useMemo(() => rowsByScope[scope] ?? [], [rowsByScope, scope]);
   const scopeLabel = STATS_SCOPES.find((s) => s.value === scope)?.label ?? "全体";
+
+  // 表の行（全スコープぶん。日付は全スコープ共通なので読み込み位置は1つで持つ）
+  const [tableRowsByScope, setTableRowsByScope] = useState(initialTableRowsByScope);
+  const [tableFrom, setTableFrom] = useState(initialTableFrom);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const firstDate = rowsByScope.all[0]?.date ?? null;
+  const hasMore = tableFrom !== null && firstDate !== null && firstDate < tableFrom;
+
+  const loadMore = async () => {
+    if (!tableFrom || loadingMore) return;
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/trends?before=${tableFrom}&days=${TABLE_PAGE_DAYS}`);
+      if (!res.ok) throw new Error(`読み込みに失敗しました（${res.status}）`);
+      const body = (await res.json()) as TrendsPageResponse;
+      setTableRowsByScope((prev) => {
+        const next = { ...prev };
+        for (const s of STATS_SCOPES) {
+          // 古い日付を手前に足す（API は昇順で返す）
+          next[s.value] = [...(body.rows[s.value] ?? []), ...(prev[s.value] ?? [])];
+        }
+        return next;
+      });
+      setTableFrom(body.from);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // 現在値と直近1か月（最新日の1か月前の翌日〜最新日）の完了数
   const summary = useMemo(() => {
@@ -301,7 +340,8 @@ export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, Tr
     };
   }, [rows]);
 
-  const desc = useMemo(() => [...rows].reverse(), [rows]);
+  // 表は新しい日が上
+  const desc = useMemo(() => [...(tableRowsByScope[scope] ?? [])].reverse(), [tableRowsByScope, scope]);
   const weeks = useMemo(() => toWeeks(rows), [rows]);
   const thead = "border-b border-black/5 text-left text-[11px] font-medium text-black/60";
 
@@ -389,6 +429,21 @@ export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, Tr
                 ))}
               </tbody>
             </table>
+            {/* 古い日付は TABLE_PAGE_DAYS 日ずつ足す（施策名込みの行は重いので最初は直近だけ） */}
+            {(hasMore || loadError) && (
+              <div className="flex items-center justify-center gap-3 border-t border-black/5 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-1 rounded-md border border-black/10 px-3 py-1 text-xs text-black/60 transition-colors hover:bg-black/5 disabled:opacity-50"
+                >
+                  {loadingMore ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
+                  もっと見る（さらに{TABLE_PAGE_DAYS}日）
+                </button>
+                {loadError && <span className="text-xs text-rose-500">{loadError}</span>}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
