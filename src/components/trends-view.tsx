@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { STATS_SCOPES, type StatsScope } from "@/lib/daily-stats";
+import { STATS_SCOPES, type IncreaseKind, type StatsScope } from "@/lib/daily-stats";
 import { groupByWeek, weekLabel } from "@/lib/weeks";
 import { ScopeToggle } from "@/components/scope-toggle";
 
@@ -15,7 +15,11 @@ export type TrendMetric = {
   published: number; // 前日から完了した数
   increase: number; // 前日から増えた数
   isBaseline: boolean; // 最初の日。前日が無いので完了・増加は出せない
+  publishedTitles: string[]; // 完了した施策名（ホバーで出す）
+  increasedItems: { title: string; kind: IncreaseKind }[]; // 増えた施策名と区分（新規／流入）
 };
+
+const KIND_LABEL: Record<IncreaseKind, string> = { new: "新規", inflow: "流入" };
 
 export type TrendRow = {
   date: string; // YYYY-MM-DD
@@ -226,13 +230,48 @@ function SummaryCard({ label, value, accent, sub }: { label: string; value: stri
   );
 }
 
-// 「前日から」の数。基準日や集計の無い日は — を出す
+// 「前日から」の数。基準日や集計の無い日は — を出す。
+// 1件以上あればホバー（キーボードではフォーカス）で、どの施策かを吹き出しで出す。
 function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published" | "increase"; tone: "good" | "bad" }) {
   if (!m || m.isBaseline) return <td className="px-3 py-2 text-right text-black/25">—</td>;
   const v = m[pick];
+  const items: { title: string; tag?: string }[] =
+    pick === "published"
+      ? m.publishedTitles.map((title) => ({ title }))
+      : m.increasedItems.map((it) => ({ title: it.title, tag: KIND_LABEL[it.kind] }));
+  const colorClass = v === 0 ? "text-black/25" : tone === "good" ? "text-emerald-600" : "text-rose-500";
+  if (items.length === 0) {
+    return <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>{v}</td>;
+  }
   return (
-    <td className={cn("px-3 py-2 text-right tabular-nums", v === 0 ? "text-black/25" : tone === "good" ? "text-emerald-600" : "text-rose-500")}>
-      {v}
+    <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>
+      <span className="group relative inline-block">
+        <button
+          type="button"
+          className="cursor-help rounded px-1 underline decoration-dotted underline-offset-4 hover:bg-black/5 focus:bg-black/5 focus:outline-none"
+          aria-label={`${pick === "published" ? "完了した" : "増えた"}施策 ${items.length}件を表示`}
+        >
+          {v}
+        </button>
+        <div
+          role="tooltip"
+          className="pointer-events-none invisible absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-black/10 bg-white p-2 text-left text-xs font-normal normal-nums text-black/80 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        >
+          <div className="mb-1 text-[11px] text-black/50">
+            {pick === "published" ? "前日から完了した施策" : "前日から増えた施策"}
+          </div>
+          <ul className="max-h-56 space-y-1 overflow-y-auto">
+            {items.map((it, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                {it.tag && (
+                  <span className="shrink-0 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-600">{it.tag}</span>
+                )}
+                <span className="break-words">{it.title}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </span>
     </td>
   );
 }
@@ -309,7 +348,8 @@ export function TrendsView({ rowsByScope }: { rowsByScope: Record<StatsScope, Tr
             <CompletedChart weeks={weeks} />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-black/5 bg-white">
+          {/* 吹き出し（ホバーの施策名）が端の行で切れないよう overflow は隠さない */}
+          <div className="rounded-xl border border-black/5 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className={thead}>

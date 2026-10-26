@@ -4,9 +4,17 @@ import { Header } from "@/components/header";
 import { STATS_SCOPES, type DailyStatRow, type StatsScope } from "@/lib/daily-stats";
 import { TrendsView, type TrendMetric, type TrendRow } from "@/components/trends-view";
 
-// 作り置き集計行から、推移ページで使う軽い数だけ取り出す
+// 作り置き集計行から、推移ページで使う数と、ホバーで出す施策名だけ取り出す
 function toMetric(r: DailyStatRow): TrendMetric {
-  return { total: r.total, published: r.published, increase: r.increase, isBaseline: r.is_baseline };
+  return {
+    total: r.total,
+    published: r.published,
+    increase: r.increase,
+    isBaseline: r.is_baseline,
+    // 完了した施策＝減少のうち published（置き場所そのままで完了になった）
+    publishedTitles: (r.decreased_items ?? []).filter((it) => it.reason === "published").map((it) => it.title),
+    increasedItems: (r.increased_items ?? []).map((it) => ({ title: it.title, kind: it.kind })),
+  };
 }
 
 export default async function TrendsPage() {
@@ -20,8 +28,8 @@ export default async function TrendsPage() {
   }
 
   // 全案件（backlog_daily_stats）と要求定義（requirement_daily_stats）を4スコープぶん読み、
-  // 日付でつき合わせる。明細（増減した施策の一覧）は要らないので列を絞る。
-  const cols = "scope, stat_date, total, published, increase, is_baseline";
+  // 日付でつき合わせる。増減した施策の名前はホバーで出すので items も読む（ステータス内訳などは不要）。
+  const cols = "scope, stat_date, total, published, increase, is_baseline, increased_items, decreased_items";
   const [{ data: backlogRows }, { data: requirementRows }] = await Promise.all([
     supabase.from("backlog_daily_stats").select(cols).order("stat_date", { ascending: true }),
     supabase.from("requirement_daily_stats").select(cols).order("stat_date", { ascending: true }),
