@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "施策一覧" },
+  { href: "/trends", label: "推移" },
   { href: "/workload", label: "アサイン状況" },
   { href: "/members", label: "メンバー" },
   { href: "/snapshots", label: "スナップショット" },

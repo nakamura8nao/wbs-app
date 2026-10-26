@@ -5,6 +5,7 @@
 //   - improvement : 置き場所が改善（track=improvement でプチ改善/ABテストのフラグなし）かつ status != 完了
 //   - requirement : status が要求定義以前（未着手/調査/要求定義）＝要求定義が未完了。
 //                   置き場所で絞った集計（scope = all / investment / improvement / petit）を同じ表に持つ
+//   - backlog     : status != 完了 の全案件（ABテスト中も含む）。requirement と同じく scope で絞った集計を持つ
 //
 // 前日→当日でこの母数から抜けた施策を「減少」とし、内訳を判定する:
 //   - published : 置き場所は変わらず status が「完了」になった（＝消化完了・公開ずみ）
@@ -81,12 +82,16 @@ type SnapProject = {
 // ---- 集計対象（タブ）の定義 ----
 // 新しいタブの推移を取りたいときは、ここに1件足して同じ形の集計テーブルを用意する。
 
-export type StatsTargetKey = "petit" | "improvement" | "requirement";
+export type StatsTargetKey = "petit" | "improvement" | "requirement" | "backlog";
 
 export type StatsTarget = {
   key: StatsTargetKey;
   // 作り置き集計テーブル名（1日1行・列構成は petit_daily_stats と同じ）
-  table: "petit_daily_stats" | "improvement_daily_stats" | "requirement_daily_stats";
+  table:
+    | "petit_daily_stats"
+    | "improvement_daily_stats"
+    | "requirement_daily_stats"
+    | "backlog_daily_stats";
   // 同じ表に複数の母数を持つときの区分（requirement_daily_stats.scope）。無ければ表は stat_date だけが主キー
   scope?: string;
   // 残数（母集団）に入る施策か
@@ -127,15 +132,40 @@ export function isPastRequirement(status: string | undefined): boolean {
   return statusIndex(status) > REQUIREMENT_INDEX;
 }
 
-// 要求定義の集計を置き場所で絞るときの区分。all は置き場所を問わない（ABテストも含む）。
-export type RequirementScope = "all" | "investment" | "improvement" | "petit";
+// 要求定義・全案件の集計を置き場所で絞るときの区分。all は置き場所を問わない（ABテストも含む）。
+export type StatsScope = "all" | "investment" | "improvement" | "petit";
+export type RequirementScope = StatsScope;
 
-export const REQUIREMENT_SCOPES: { value: RequirementScope; label: string; description: string }[] = [
+export const STATS_SCOPES: { value: StatsScope; label: string; description: string }[] = [
   { value: "all", label: "全体", description: "置き場所を問わず" },
   { value: "investment", label: "投資", description: "投資タブの" },
   { value: "improvement", label: "改善", description: "改善タブの" },
   { value: "petit", label: "プチ改善", description: "プチ改善タブの" },
 ];
+export const REQUIREMENT_SCOPES = STATS_SCOPES;
+
+const inScope = (p: SnapProject, scope: StatsScope) =>
+  scope === "all" || placementOfSnap(p) === scope;
+
+// 全案件（status != 完了）の集計。改善／プチ改善スコープは improvement_daily_stats / petit_daily_stats と
+// 同じ数になるが、推移ページが1表で読めるように backlog_daily_stats にも持つ。
+function backlogTarget(scope: StatsScope): StatsTarget {
+  return {
+    key: "backlog",
+    table: "backlog_daily_stats",
+    scope,
+    isInPopulation: (p) => p.status !== "完了" && inScope(p, scope),
+    // scope の置き場所から出て行った＝movedOut。置き場所そのままで完了＝published
+    isMovedOut: (p) => !inScope(p, scope),
+  };
+}
+
+export const BACKLOG_TARGETS: Record<StatsScope, StatsTarget> = {
+  all: backlogTarget("all"),
+  investment: backlogTarget("investment"),
+  improvement: backlogTarget("improvement"),
+  petit: backlogTarget("petit"),
+};
 
 function requirementTarget(scope: RequirementScope): StatsTarget {
   return {
@@ -144,8 +174,7 @@ function requirementTarget(scope: RequirementScope): StatsTarget {
     scope,
     // 要求定義がまだ終わっていない施策（未着手/調査も「要求定義未完了」として母数に入れる）。
     // scope が置き場所のときは、その置き場所にある施策だけ
-    isInPopulation: (p) =>
-      isRequirementPending(p.status) && (scope === "all" || placementOfSnap(p) === scope),
+    isInPopulation: (p) => isRequirementPending(p.status) && inScope(p, scope),
     // 要求定義より後ろへ進んだ＝published（要求定義完了）。それ以外で母数から抜けた＝movedOut
     // （選択肢外のステータス、または scope の置き場所から別タブへ移った）
     isMovedOut: (p) => !isPastRequirement(p.status),
@@ -174,6 +203,7 @@ export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
     isMovedOut: (p) => placementOfSnap(p) !== "improvement",
   },
   requirement: REQUIREMENT_TARGETS.all,
+  backlog: BACKLOG_TARGETS.all,
 };
 
 // cron とバックフィルが更新する集計の全件（ビュー用の STATS_TARGETS と違い、scope 違いも含む）
@@ -181,6 +211,7 @@ export const ALL_STATS_TARGETS: StatsTarget[] = [
   STATS_TARGETS.petit,
   STATS_TARGETS.improvement,
   ...Object.values(REQUIREMENT_TARGETS),
+  ...Object.values(BACKLOG_TARGETS),
 ];
 
 // upsert の衝突キー。scope を持つ表は (scope, stat_date) が主キー

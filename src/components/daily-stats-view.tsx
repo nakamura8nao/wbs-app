@@ -124,6 +124,25 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     emptyMessage:
       "集計がまだありません。日次スナップショット後、または /api/requirement-stats/backfill の実行後にここに表示されます。",
   },
+  backlog: {
+    title: "未完了案件 増減の推移",
+    icon: Repeat,
+    iconClass: "text-sky-400",
+    chartTitle: "残数の推移（未完了の全案件）",
+    chartColor: "#0ea5e9",
+    focus: "remaining",
+    statusSeries: BACKLOG_STATUS_SERIES,
+    totalLabel: "現在の残数（未完了）",
+    totalColumnLabel: "残数",
+    totalSub: "status が完了以外の全案件",
+    totalAccent: "text-sky-300",
+    totalCellClass: "text-sky-600",
+    rowHoverClass: "hover:bg-sky-50/60",
+    publishedLabel: "公開ずみ",
+    movedOutLabel: "対象外へ移動（別タブなど）",
+    emptyMessage:
+      "集計がまだありません。日次スナップショット後、または /api/backlog-stats/backfill の実行後にここに表示されます。",
+  },
 };
 
 // 日付順の行から「published（完了）の累計」を日付ごとに引けるようにする。基準日は増減が無いので 0 のまま。
