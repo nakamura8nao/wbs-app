@@ -417,6 +417,58 @@ export type Database = {
         };
         Relationships: [];
       };
+      backlog_daily_stats: {
+        Row: {
+          scope: string;
+          stat_date: string;
+          total: number;
+          status_counts: Record<string, number>;
+          status_flows: Record<string, { increase: number; decrease: number }>;
+          is_baseline: boolean;
+          increase: number;
+          decrease: number;
+          published: number;
+          moved_out: number;
+          deleted: number;
+          increased_items: { id: string; title: string; kind: string }[];
+          decreased_items: { id: string; title: string; reason: string }[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          scope?: string;
+          stat_date: string;
+          total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
+          is_baseline?: boolean;
+          increase?: number;
+          decrease?: number;
+          published?: number;
+          moved_out?: number;
+          deleted?: number;
+          increased_items?: unknown;
+          decreased_items?: unknown;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          scope?: string;
+          total?: number;
+          status_counts?: unknown;
+          status_flows?: unknown;
+          is_baseline?: boolean;
+          increase?: number;
+          decrease?: number;
+          published?: number;
+          moved_out?: number;
+          deleted?: number;
+          increased_items?: unknown;
+          decreased_items?: unknown;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

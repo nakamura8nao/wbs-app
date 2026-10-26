@@ -13,6 +13,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { groupByWeek, weekLabel } from "@/lib/weeks";
 import {
   HIGHLIGHT_STATUSES,
   type DayStat,
@@ -123,6 +124,25 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     movedOutLabel: "対象外へ移動（別タブなど）",
     emptyMessage:
       "集計がまだありません。日次スナップショット後、または /api/requirement-stats/backfill の実行後にここに表示されます。",
+  },
+  backlog: {
+    title: "未完了案件 増減の推移",
+    icon: Repeat,
+    iconClass: "text-sky-400",
+    chartTitle: "残数の推移（未完了の全案件）",
+    chartColor: "#0ea5e9",
+    focus: "remaining",
+    statusSeries: BACKLOG_STATUS_SERIES,
+    totalLabel: "現在の残数（未完了）",
+    totalColumnLabel: "残数",
+    totalSub: "status が完了以外の全案件",
+    totalAccent: "text-sky-300",
+    totalCellClass: "text-sky-600",
+    rowHoverClass: "hover:bg-sky-50/60",
+    publishedLabel: "公開ずみ",
+    movedOutLabel: "対象外へ移動（別タブなど）",
+    emptyMessage:
+      "集計がまだありません。日次スナップショット後、または /api/backlog-stats/backfill の実行後にここに表示されます。",
   },
 };
 
@@ -318,40 +338,16 @@ function TrendChart({
   );
 }
 
-// YYYY-MM-DD を含む週の月曜日（YYYY-MM-DD）。週別集計のキーに使う
-function weekStartOf(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  const offset = (d.getUTCDay() + 6) % 7; // 月=0 … 日=6
-  d.setUTCDate(d.getUTCDate() - offset);
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 type WeekBucket = { weekStart: string; completed: number; partial: boolean };
 
 // 日次行を週（月曜始まり）ごとに束ねて完了（published）を合計する。
-// 行が無い週も 0 で埋めて並べる（横軸を等間隔にするため）。最新行を含む週は集計途中なので partial。
+// 行が無い週も 0 で埋めて並べる。最新行を含む週は集計途中なので partial。
 function weeklyCompleted(stats: DayStat[]): WeekBucket[] {
-  const rows = stats.filter((s) => !s.isBaseline);
-  if (rows.length === 0) return [];
-  const sums = new Map<string, number>();
-  for (const s of rows) {
-    const key = weekStartOf(s.date);
-    sums.set(key, (sums.get(key) ?? 0) + s.breakdown.published);
-  }
-  const first = weekStartOf(rows[0].date);
-  const latest = rows[rows.length - 1].date;
-  const lastWeek = weekStartOf(latest);
-  const out: WeekBucket[] = [];
-  for (let w = first; w <= lastWeek; w = addDays(w, 7)) {
-    out.push({ weekStart: w, completed: sums.get(w) ?? 0, partial: w === lastWeek });
-  }
-  return out;
+  return groupByWeek(stats.filter((s) => !s.isBaseline)).map((w) => ({
+    weekStart: w.weekStart,
+    completed: w.rows.reduce((acc, s) => acc + s.breakdown.published, 0),
+    partial: w.partial,
+  }));
 }
 
 // 週別の完了数の棒グラフ（インラインSVG）。折れ線と同じく y 軸を固定し、棒だけ横スクロールする。
@@ -397,7 +393,7 @@ function WeeklyBarChart({ weeks, color, label }: { weeks: WeekBucket[]; color: s
             return (
               <g key={w.weekStart}>
                 <title>
-                  {`${w.weekStart.slice(5).replace("-", "/")}週${w.partial ? "（集計中）" : ""}: ${label} ${w.completed}件`}
+                  {`${weekLabel(w.weekStart)}週${w.partial ? "（集計中）" : ""}: ${label} ${w.completed}件`}
                 </title>
                 {/* 当たり判定を棒より広く取る（ホバーで title が出る） */}
                 <rect x={pad.left + i * stepX} y={pad.top} width={stepX} height={innerH} fill="transparent" />
@@ -421,7 +417,7 @@ function WeeklyBarChart({ weeks, color, label }: { weeks: WeekBucket[]; color: s
                   {w.completed}
                 </text>
                 <text x={x(i) + barW / 2} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
-                  {w.weekStart.slice(5).replace("-", "/")}
+                  {weekLabel(w.weekStart)}
                 </text>
               </g>
             );

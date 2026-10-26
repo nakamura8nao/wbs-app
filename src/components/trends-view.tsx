@@ -1,0 +1,459 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronDown, Loader2, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { STATS_SCOPES, type IncreaseKind, type StatsScope } from "@/lib/daily-stats";
+import { groupByWeek, weekLabel } from "@/lib/weeks";
+import {
+  TABLE_PAGE_DAYS,
+  type TrendMetric,
+  type TrendRow,
+  type TrendRowsByScope,
+  type TrendsPageResponse,
+} from "@/lib/trends";
+import { ScopeToggle } from "@/components/scope-toggle";
+
+const KIND_LABEL: Record<IncreaseKind, string> = { new: "新規", inflow: "流入" };
+
+// 系列の色。案件全体＝sky、要求定義＝amber（要求定義ページの残数の色と同じ）
+const SERIES = {
+  backlog: { label: "未完了案件", color: "#0ea5e9", cellClass: "text-sky-600" },
+  requirement: { label: "要求定義未完了", color: "#f59e0b", cellClass: "text-amber-600" },
+} as const;
+
+const mmdd = (date: string) => date.slice(5).replace("-", "/");
+
+// 週次の1点。未完了数はその週の最後の日の値、完了数はその週の合計
+type WeekPoint = {
+  weekStart: string;
+  partial: boolean; // 最新の週（集計途中）
+  lastDate: string; // 未完了数を取った日
+  backlogTotal: number | null;
+  requirementTotal: number | null;
+  backlogDone: number;
+  requirementDone: number;
+};
+
+function toWeeks(rows: TrendRow[]): WeekPoint[] {
+  return groupByWeek(rows).map((w) => {
+    const last = [...w.rows].reverse().find((r) => r.backlog || r.requirement) ?? null;
+    const sum = (pick: (r: TrendRow) => TrendMetric | null) =>
+      w.rows.reduce((acc, r) => {
+        const m = pick(r);
+        return acc + (m && !m.isBaseline ? m.published : 0);
+      }, 0);
+    return {
+      weekStart: w.weekStart,
+      partial: w.partial,
+      lastDate: last?.date ?? w.weekStart,
+      backlogTotal: last?.backlog?.total ?? null,
+      requirementTotal: last?.requirement?.total ?? null,
+      backlogDone: sum((r) => r.backlog),
+      requirementDone: sum((r) => r.requirement),
+    };
+  });
+}
+
+function monthAgo(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// 最新日まで横スクロールした状態で開く（折れ線・棒で共通）
+function useScrollToEnd(dep: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [dep]);
+  return ref;
+}
+
+function Legend({ items }: { items: { label: string; color: string; dashed?: boolean }[] }) {
+  return (
+    <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-black/60">
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1.5">
+          <span
+            className={cn("inline-block w-4", it.dashed ? "border-t-2 border-dashed" : "h-0.5 rounded")}
+            style={it.dashed ? { borderColor: it.color } : { backgroundColor: it.color }}
+          />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function YAxis({ ticks, y, height, pad }: { ticks: number[]; y: (v: number) => number; height: number; pad: { top: number }; }) {
+  const axisW = 32;
+  return (
+    <svg width={axisW} height={height} className="shrink-0 bg-white">
+      {ticks.map((v, idx) => (
+        <text key={idx} x={axisW - 6} y={y(v) + 3} textAnchor="end" className="fill-slate-400 text-[10px]">
+          {Math.round(v)}
+        </text>
+      ))}
+      <line x1={axisW - 1} y1={pad.top} x2={axisW - 1} y2={y(0)} stroke="#e2e8f0" strokeWidth={1} />
+    </svg>
+  );
+}
+
+// 未完了数の折れ線（週次。各週の最後の日の値。案件全体と要求定義を同じ軸に重ねる）
+function RemainingChart({ weeks }: { weeks: WeekPoint[] }) {
+  const ref = useScrollToEnd(weeks.length);
+  if (weeks.length === 0) return null;
+
+  const pad = { top: 16, right: 16, bottom: 28, left: 16 };
+  const stepX = 48;
+  const innerW = Math.max((weeks.length - 1) * stepX, stepX);
+  const innerH = 140;
+  const width = pad.left + innerW + pad.right;
+  const height = pad.top + innerH + pad.bottom;
+  const max = Math.max(1, ...weeks.map((w) => Math.max(w.backlogTotal ?? 0, w.requirementTotal ?? 0)));
+  const x = (i: number) => pad.left + (weeks.length === 1 ? innerW / 2 : (i / (weeks.length - 1)) * innerW);
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH;
+  const ticks = [0, max / 2, max];
+  const line = (pick: (w: WeekPoint) => number | null) =>
+    weeks
+      .map((w, i) => {
+        const v = pick(w);
+        return v === null ? null : `${x(i)},${y(v)}`;
+      })
+      .filter((p): p is string => p !== null)
+      .join(" ");
+
+  return (
+    <div>
+      <Legend items={[SERIES.backlog, SERIES.requirement]} />
+      <div className="flex">
+        <YAxis ticks={ticks} y={y} height={height} pad={pad} />
+        <div ref={ref} className="min-w-0 flex-1 overflow-x-auto">
+          <svg width={width} height={height}>
+            {ticks.map((v, idx) => (
+              <line key={idx} x1={0} y1={y(v)} x2={width} y2={y(v)} stroke="#e2e8f0" strokeWidth={1} />
+            ))}
+            <polyline points={line((w) => w.backlogTotal)} fill="none" stroke={SERIES.backlog.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <polyline points={line((w) => w.requirementTotal)} fill="none" stroke={SERIES.requirement.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            {weeks.map((w, i) => (
+              <g key={w.weekStart}>
+                <title>{`${weekLabel(w.weekStart)}週（${mmdd(w.lastDate)}時点${w.partial ? "・集計中" : ""}）  未完了 ${w.backlogTotal ?? "—"} / 要求定義未完了 ${w.requirementTotal ?? "—"}`}</title>
+                <rect x={x(i) - stepX / 2} y={pad.top} width={stepX} height={innerH} fill="transparent" />
+                {w.backlogTotal !== null && <circle cx={x(i)} cy={y(w.backlogTotal)} r={3} fill={SERIES.backlog.color} fillOpacity={w.partial ? 0.5 : 1} />}
+                {w.requirementTotal !== null && <circle cx={x(i)} cy={y(w.requirementTotal)} r={3} fill={SERIES.requirement.color} fillOpacity={w.partial ? 0.5 : 1} />}
+                <text x={x(i)} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
+                  {weekLabel(w.weekStart)}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 週別の完了数の棒（案件全体の完了と要求定義完了を週ごとに並べる。最新の週は集計途中なので薄く）
+function CompletedChart({ weeks }: { weeks: WeekPoint[] }) {
+  const ref = useScrollToEnd(weeks.length);
+  if (weeks.length === 0) return null;
+
+  const pad = { top: 18, right: 12, bottom: 28, left: 12 };
+  const stepX = 48;
+  const barW = 14;
+  const innerH = 120;
+  const width = pad.left + weeks.length * stepX + pad.right;
+  const height = pad.top + innerH + pad.bottom;
+  const max = Math.max(1, ...weeks.map((w) => Math.max(w.backlogDone, w.requirementDone)));
+  const y = (v: number) => pad.top + innerH - (v / max) * innerH;
+  const ticks = [0, max / 2, max];
+  const bar = (i: number, slot: 0 | 1, v: number, color: string, partial: boolean) => {
+    const x = pad.left + i * stepX + (stepX - barW * 2 - 2) / 2 + slot * (barW + 2);
+    return (
+      <>
+        {v > 0 && <rect x={x} y={y(v)} width={barW} height={pad.top + innerH - y(v)} rx={3} fill={color} fillOpacity={partial ? 0.4 : 0.85} />}
+        <text x={x + barW / 2} y={y(v) - 4} textAnchor="middle" className={cn("text-[10px]", v > 0 ? "fill-slate-600" : "fill-slate-300")}>
+          {v}
+        </text>
+      </>
+    );
+  };
+
+  return (
+    <div>
+      <Legend items={[{ label: "完了（全案件）", color: SERIES.backlog.color }, { label: "要求定義完了", color: SERIES.requirement.color }]} />
+      <div className="flex">
+        <YAxis ticks={ticks} y={y} height={height} pad={pad} />
+        <div ref={ref} className="min-w-0 flex-1 overflow-x-auto">
+          <svg width={width} height={height}>
+            {ticks.map((v, idx) => (
+              <line key={idx} x1={0} y1={y(v)} x2={width} y2={y(v)} stroke="#e2e8f0" strokeWidth={1} />
+            ))}
+            {weeks.map((w, i) => (
+              <g key={w.weekStart}>
+                <title>{`${weekLabel(w.weekStart)}週${w.partial ? "（集計中）" : ""}  完了 ${w.backlogDone} / 要求定義完了 ${w.requirementDone}`}</title>
+                <rect x={pad.left + i * stepX} y={pad.top} width={stepX} height={innerH} fill="transparent" />
+                {bar(i, 0, w.backlogDone, SERIES.backlog.color, w.partial)}
+                {bar(i, 1, w.requirementDone, SERIES.requirement.color, w.partial)}
+                <text x={pad.left + i * stepX + stepX / 2} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[10px]">
+                  {weekLabel(w.weekStart)}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="text-[11px] text-white/50">{label}</div>
+      <div className={cn("mt-0.5 text-2xl font-semibold tabular-nums", accent)}>{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] text-white/40">{sub}</div>}
+    </div>
+  );
+}
+
+// 「前日から」の数。基準日や集計の無い日は — を出す。
+// 1件以上あればホバー（キーボードではフォーカス）で、どの施策かを吹き出しで出す。
+function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published" | "increase"; tone: "good" | "bad" }) {
+  if (!m || m.isBaseline) return <td className="px-3 py-2 text-right text-black/25">—</td>;
+  const v = m[pick];
+  const items: { title: string; tag?: string }[] =
+    pick === "published"
+      ? m.publishedTitles.map((title) => ({ title }))
+      : m.increasedItems.map((it) => ({ title: it.title, tag: KIND_LABEL[it.kind] }));
+  const colorClass = v === 0 ? "text-black/25" : tone === "good" ? "text-emerald-600" : "text-rose-500";
+  if (items.length === 0) {
+    // ホバーのあるセルはボタンに px-1 が付くので、無いセルも同じ幅の余白を入れて数字の位置を揃える
+    return (
+      <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>
+        <span className="inline-block px-1">{v}</span>
+      </td>
+    );
+  }
+  return (
+    <td className={cn("px-3 py-2 text-right tabular-nums", colorClass)}>
+      <span className="group relative inline-block">
+        <button
+          type="button"
+          className="cursor-help rounded px-1 underline decoration-dotted underline-offset-4 hover:bg-black/5 focus:bg-black/5 focus:outline-none"
+          aria-label={`${pick === "published" ? "完了した" : "増えた"}施策 ${items.length}件を表示`}
+        >
+          {v}
+        </button>
+        <div
+          role="tooltip"
+          className="pointer-events-none invisible absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-black/10 bg-white p-2 text-left text-xs font-normal normal-nums text-black/80 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        >
+          <div className="mb-1 text-[11px] text-black/50">
+            {pick === "published" ? "前日から完了した施策" : "前日から増えた施策"}
+          </div>
+          <ul className="max-h-56 space-y-1 overflow-y-auto">
+            {items.map((it, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="shrink-0 text-black/40" aria-hidden="true">・</span>
+                {it.tag && (
+                  <span className="shrink-0 rounded bg-rose-50 px-1 py-0.5 text-[10px] text-rose-600">{it.tag}</span>
+                )}
+                <span className="break-words">{it.title}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </span>
+    </td>
+  );
+}
+
+export function TrendsView({
+  rowsByScope,
+  initialTableRowsByScope,
+  initialTableFrom,
+}: {
+  // 数字だけの全期間（グラフ・サマリー用）
+  rowsByScope: TrendRowsByScope;
+  // 施策名込みの直近ぶん（表用）。「もっと見る」で /api/trends から古い日を足していく
+  initialTableRowsByScope: TrendRowsByScope;
+  // 表に読み込み済みの最古の日付（これより前が未読）。null は全期間読み込み済み
+  initialTableFrom: string | null;
+}) {
+  const [scope, setScope] = useState<StatsScope>("all");
+  const rows = useMemo(() => rowsByScope[scope] ?? [], [rowsByScope, scope]);
+  const scopeLabel = STATS_SCOPES.find((s) => s.value === scope)?.label ?? "全体";
+
+  // 表の行（全スコープぶん。日付は全スコープ共通なので読み込み位置は1つで持つ）
+  const [tableRowsByScope, setTableRowsByScope] = useState(initialTableRowsByScope);
+  const [tableFrom, setTableFrom] = useState(initialTableFrom);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const firstDate = rowsByScope.all[0]?.date ?? null;
+  const hasMore = tableFrom !== null && firstDate !== null && firstDate < tableFrom;
+
+  const loadMore = async () => {
+    if (!tableFrom || loadingMore) return;
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/trends?before=${tableFrom}&days=${TABLE_PAGE_DAYS}`);
+      if (!res.ok) throw new Error(`読み込みに失敗しました（${res.status}）`);
+      const body = (await res.json()) as TrendsPageResponse;
+      setTableRowsByScope((prev) => {
+        const next = { ...prev };
+        for (const s of STATS_SCOPES) {
+          // 古い日付を手前に足す（API は昇順で返す）
+          next[s.value] = [...(body.rows[s.value] ?? []), ...(prev[s.value] ?? [])];
+        }
+        return next;
+      });
+      setTableFrom(body.from);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // 現在値と直近1か月（最新日の1か月前の翌日〜最新日）の完了数
+  const summary = useMemo(() => {
+    const latest = rows[rows.length - 1];
+    if (!latest) return null;
+    const since = monthAgo(latest.date);
+    const window = rows.filter((r) => r.date > since);
+    const sum = (pick: (r: TrendRow) => TrendMetric | null) =>
+      window.reduce((acc, r) => {
+        const m = pick(r);
+        return acc + (m && !m.isBaseline ? m.published : 0);
+      }, 0);
+    return {
+      backlogTotal: latest.backlog?.total,
+      requirementTotal: latest.requirement?.total,
+      backlogDone: sum((r) => r.backlog),
+      requirementDone: sum((r) => r.requirement),
+      period: `${mmdd(window[0]?.date ?? latest.date)}〜${mmdd(latest.date)}`,
+    };
+  }, [rows]);
+
+  // 表は新しい日が上
+  const desc = useMemo(() => [...(tableRowsByScope[scope] ?? [])].reverse(), [tableRowsByScope, scope]);
+  const weeks = useMemo(() => toWeeks(rows), [rows]);
+  const thead = "border-b border-black/5 text-left text-[11px] font-medium text-black/60";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={16} className="text-sky-400" />
+          <h2 className="text-sm font-medium text-white">推移</h2>
+          <span className="text-xs text-white/40">毎朝のスナップショット時点の件数と、前日からの完了・増加</span>
+        </div>
+        <div className="ml-auto">
+          <ScopeToggle value={scope} onChange={setScope} />
+        </div>
+      </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SummaryCard label={`未完了案件（${scopeLabel}）`} value={summary.backlogTotal === undefined ? "—" : `${summary.backlogTotal}`} accent="text-sky-300" sub="status が完了以外" />
+          <SummaryCard label="直近1か月の完了" value={`${summary.backlogDone}`} accent="text-emerald-300" sub={summary.period} />
+          <SummaryCard label={`要求定義未完了（${scopeLabel}）`} value={summary.requirementTotal === undefined ? "—" : `${summary.requirementTotal}`} accent="text-amber-300" sub="未着手・調査・要求定義" />
+          <SummaryCard label="直近1か月の要求定義完了" value={`${summary.requirementDone}`} accent="text-emerald-300" sub={summary.period} />
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center text-sm text-white/50">
+          集計がまだありません。日次スナップショット後、または /api/backlog-stats/backfill と /api/requirement-stats/backfill の実行後にここに表示されます。
+        </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-black/5 bg-white p-4">
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="font-medium text-black/60">未完了数の推移（週次・月曜始まり）</span>
+              <span className="text-[11px] text-black/40">各週の最後のスナップショット時点の件数。最新の週は集計途中</span>
+            </div>
+            <RemainingChart weeks={weeks} />
+          </div>
+          <div className="rounded-xl border border-black/5 bg-white p-4">
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="font-medium text-black/60">週別の完了数（月曜始まり）</span>
+              <span className="text-[11px] text-black/40">週内の「前日から完了した数」の合計。最新の週は集計途中（薄い棒）</span>
+            </div>
+            <CompletedChart weeks={weeks} />
+          </div>
+
+          {/* 吹き出し（ホバーの施策名）が端の行で切れないよう overflow は隠さない */}
+          <div className="rounded-xl border border-black/5 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={thead}>
+                  <th rowSpan={2} className="px-3 py-2 align-bottom">日付</th>
+                  <th colSpan={3} className="border-l border-black/5 px-3 pt-2 text-center text-sky-700">未完了案件</th>
+                  <th colSpan={3} className="border-l border-black/5 px-3 pt-2 text-center text-amber-700">要求定義</th>
+                </tr>
+                <tr className={thead}>
+                  <th className="w-24 border-l border-black/5 px-3 pb-2 text-right">未完了案件数</th>
+                  <th className="w-28 px-3 pb-2 text-right font-normal">前日から完了した数</th>
+                  <th className="w-28 px-3 pb-2 text-right font-normal">前日から増えた数</th>
+                  <th className="w-24 border-l border-black/5 px-3 pb-2 text-right">未完了案件数</th>
+                  <th className="w-28 px-3 pb-2 text-right font-normal">前日から完了した数</th>
+                  <th className="w-28 px-3 pb-2 text-right font-normal">前日から増えた数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {desc.map((r) => (
+                  <tr key={r.date} className="border-b border-black/5">
+                    <td className="px-3 py-2 font-medium text-foreground">
+                      {r.date}
+                      {(r.backlog?.isBaseline || r.requirement?.isBaseline) && (
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">基準日</span>
+                      )}
+                    </td>
+                    <td className={cn("border-l border-black/5 px-3 py-2 text-right font-semibold tabular-nums", SERIES.backlog.cellClass)}>
+                      {r.backlog?.total ?? <span className="font-normal text-black/25">—</span>}
+                    </td>
+                    <DeltaCell m={r.backlog} pick="published" tone="good" />
+                    <DeltaCell m={r.backlog} pick="increase" tone="bad" />
+                    <td className={cn("border-l border-black/5 px-3 py-2 text-right font-semibold tabular-nums", SERIES.requirement.cellClass)}>
+                      {r.requirement?.total ?? <span className="font-normal text-black/25">—</span>}
+                    </td>
+                    <DeltaCell m={r.requirement} pick="published" tone="good" />
+                    <DeltaCell m={r.requirement} pick="increase" tone="bad" />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {/* 古い日付は TABLE_PAGE_DAYS 日ずつ足す（施策名込みの行は重いので最初は直近だけ） */}
+            {(hasMore || loadError) && (
+              <div className="flex items-center justify-center gap-3 border-t border-black/5 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-1 rounded-md border border-black/10 px-3 py-1 text-xs text-black/60 transition-colors hover:bg-black/5 disabled:opacity-50"
+                >
+                  {loadingMore ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
+                  もっと見る（さらに{TABLE_PAGE_DAYS}日）
+                </button>
+                {loadError && <span className="text-xs text-rose-500">{loadError}</span>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
+            <span>どの施策が増減したかの明細:</span>
+            <Link href="/requirement" className="underline-offset-2 hover:text-white/80 hover:underline">要求定義</Link>
+            <Link href="/improvement" className="underline-offset-2 hover:text-white/80 hover:underline">改善</Link>
+            <Link href="/petit-improvement" className="underline-offset-2 hover:text-white/80 hover:underline">プチ改善</Link>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
