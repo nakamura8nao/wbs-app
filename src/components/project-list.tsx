@@ -1763,6 +1763,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <span className="text-xs text-sky-700/70">
                 ここでの並び替えはこのビュー専用で、他のタブの優先順位には影響しません
               </span>
+              <Link
+                href="/requirement"
+                className="ml-auto flex items-center gap-1 rounded-md border border-sky-300 bg-white/60 px-2 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-white"
+              >
+                <TrendingUp size={13} />
+                完了数の推移
+              </Link>
             </div>
           </div>
 

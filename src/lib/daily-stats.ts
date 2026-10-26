@@ -1,16 +1,25 @@
-// タブ（プチ改善／改善）の日次増減を、スナップショット差分から算出する。
+// タブ（プチ改善／改善）や要求定義の日次増減を、スナップショット差分から算出する。
 //
-// 「残数」の定義はタブごとに STATS_TARGETS で持つ（施策一覧の各タブと同じ母数）。
+// 「残数」の定義は集計対象ごとに STATS_TARGETS で持つ（施策一覧の各ビューと同じ母数）。
 //   - petit       : is_petit_improvement = true かつ status != 完了
 //   - improvement : 置き場所が改善（track=improvement でプチ改善/ABテストのフラグなし）かつ status != 完了
+//   - requirement : 置き場所を問わず status が要求定義以前（未着手/調査/要求定義）＝要求定義が未完了
 //
 // 前日→当日でこの母数から抜けた施策を「減少」とし、内訳を判定する:
 //   - published : 置き場所は変わらず status が「完了」になった（＝消化完了・公開ずみ）
+//                 requirement では「要求定義より後ろのステータスへ進んだ」＝要求定義完了
 //   - movedOut  : 置き場所が変わった（別タブへ移動）
+//                 requirement では「選択肢に無いステータスになった」（通常は起きない）
 //   - deleted   : レコードごと削除された
 // 母数に新しく入った施策を「増加」とし、new（新規作成）/ inflow（既存からの流入）を区別する。
 
-import { DEFAULT_TRACK, placementOf, type Placement } from "@/lib/constants";
+import {
+  AB_TEST_STATUS,
+  DEFAULT_TRACK,
+  placementOf,
+  STATUS_OPTIONS,
+  type Placement,
+} from "@/lib/constants";
 
 export type DecreaseReason = "published" | "movedOut" | "deleted";
 export type IncreaseKind = "new" | "inflow";
@@ -71,12 +80,12 @@ type SnapProject = {
 // ---- 集計対象（タブ）の定義 ----
 // 新しいタブの推移を取りたいときは、ここに1件足して同じ形の集計テーブルを用意する。
 
-export type StatsTargetKey = "petit" | "improvement";
+export type StatsTargetKey = "petit" | "improvement" | "requirement";
 
 export type StatsTarget = {
   key: StatsTargetKey;
   // 作り置き集計テーブル名（1日1行・列構成は petit_daily_stats と同じ）
-  table: "petit_daily_stats" | "improvement_daily_stats";
+  table: "petit_daily_stats" | "improvement_daily_stats" | "requirement_daily_stats";
   // 残数（母集団）に入る施策か
   isInPopulation: (p: SnapProject) => boolean;
   // 母集団から抜けたが削除はされていない施策について、置き場所が変わって出て行ったか。
@@ -98,6 +107,23 @@ function placementOfSnap(p: SnapProject): Placement {
 // 残数のうち「まだ手が付いていない」ことを示すステータス。サマリー・表・グラフで内訳として出す。
 export const HIGHLIGHT_STATUSES = ["未着手", "要求定義"] as const;
 
+// ステータスの並び（STATUS_OPTIONS）での「要求定義」の位置。
+// 要求定義以前（未着手/調査/要求定義）＝要求定義が未完了、後ろ（要件定義以降・ABテスト中・完了）＝要求定義完了。
+// STATUS_OPTIONS に無い値（将来の追加漏れなど）はどちらにも入れない（安全側）。
+const REQUIREMENT_INDEX = STATUS_OPTIONS.indexOf("要求定義");
+const statusIndex = (status: string | undefined) =>
+  (STATUS_OPTIONS as readonly string[]).indexOf(status ?? "");
+
+export function isRequirementPending(status: string | undefined): boolean {
+  const i = statusIndex(status);
+  return i >= 0 && i <= REQUIREMENT_INDEX;
+}
+
+export function isPastRequirement(status: string | undefined): boolean {
+  if (status === AB_TEST_STATUS) return true;
+  return statusIndex(status) > REQUIREMENT_INDEX;
+}
+
 export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
   petit: {
     key: "petit",
@@ -111,6 +137,15 @@ export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
     isInPopulation: (p) =>
       placementOfSnap(p) === "improvement" && p.status !== "完了",
     isMovedOut: (p) => placementOfSnap(p) !== "improvement",
+  },
+  requirement: {
+    key: "requirement",
+    table: "requirement_daily_stats",
+    // 置き場所（投資/改善/プチ改善/ABテスト）を問わず、要求定義がまだ終わっていない施策
+    // （未着手/調査も「要求定義未完了」として母数に入れる）
+    isInPopulation: (p) => isRequirementPending(p.status),
+    // 要求定義より後ろへ進んだ＝published（要求定義完了）。それ以外で母数から抜けた＝movedOut（選択肢外のステータス）
+    isMovedOut: (p) => !isPastRequirement(p.status),
   },
 };
 
