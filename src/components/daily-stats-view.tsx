@@ -10,6 +10,7 @@ import {
   ArrowDown,
   ChevronRight,
   ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -20,11 +21,17 @@ import {
   type StatsTargetKey,
 } from "@/lib/daily-stats";
 
-// 内訳ステータスの折れ線・表の色。HIGHLIGHT_STATUSES と同じ順。
-const STATUS_SERIES: { status: (typeof HIGHLIGHT_STATUSES)[number]; color: string; cellClass: string }[] = [
-  { status: "未着手", color: "#94a3b8", cellClass: "text-slate-500" },
-  { status: "要求定義", color: "#f59e0b", cellClass: "text-amber-600" },
+// 残数の内訳として出すステータスの折れ線・表の色
+type StatusSeries = { status: string; color: string; cellClass: string };
+
+// タブ（プチ改善／改善）の内訳。HIGHLIGHT_STATUSES と同じ順。
+const BACKLOG_STATUS_SERIES: StatusSeries[] = [
+  { status: HIGHLIGHT_STATUSES[0], color: "#94a3b8", cellClass: "text-slate-500" },
+  { status: HIGHLIGHT_STATUSES[1], color: "#f59e0b", cellClass: "text-amber-600" },
 ];
+
+// 「完了（published）」の累計を折れ線で重ねるときの色（要求定義の推移で使う）
+const COMPLETED_COLOR = "#10b981";
 
 const countOf = (s: DayStat, status: string) => s.statusCounts[status] ?? 0;
 
@@ -35,11 +42,19 @@ type ViewConfig = {
   iconClass: string;
   chartTitle: string;
   chartColor: string; // SVG の stroke/fill
+  // 何を主役に見せるか。
+  //   remaining : 残数をゼロに近づける見方（タブの推移）。内訳ステータスの折れ線とカードを出す
+  //   completed : 日々の完了数（published）を追う見方（要求定義の推移）。完了数と累計の列・折れ線を出す
+  focus: "remaining" | "completed";
+  statusSeries: StatusSeries[]; // 残数の内訳として出すステータス（completed では空）
+  totalLabel: string; // サマリーカードの「現在値」の見出し
+  totalColumnLabel: string; // テーブルの残数列の見出し
   totalSub: string;
   totalAccent: string; // サマリーカードの残数の色
   totalCellClass: string; // テーブルの残数セルの色
   rowHoverClass: string;
-  movedOutLabel: string;
+  publishedLabel: string; // 減少内訳 published の表示名
+  movedOutLabel: string; // 減少内訳 movedOut の表示名
   emptyMessage: string;
 };
 
@@ -50,10 +65,15 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     iconClass: "text-violet-400",
     chartTitle: "残数の推移（未消化プチ改善）",
     chartColor: "#8b5cf6",
+    focus: "remaining",
+    statusSeries: BACKLOG_STATUS_SERIES,
+    totalLabel: "現在の残数（未完了）",
+    totalColumnLabel: "残数",
     totalSub: "ゼロを目指す母数",
     totalAccent: "text-violet-300",
     totalCellClass: "text-violet-600",
     rowHoverClass: "hover:bg-violet-50/60",
+    publishedLabel: "公開ずみ",
     movedOutLabel: "プチ改善外へ移動",
     emptyMessage:
       "スナップショットがまだありません。スナップショットが撮られると、ここに日次の増減が表示されます。",
@@ -64,15 +84,50 @@ export const VIEW_CONFIGS: Record<StatsTargetKey, ViewConfig> = {
     iconClass: "text-sky-400",
     chartTitle: "残数の推移（未完了の改善施策）",
     chartColor: "#0ea5e9",
+    focus: "remaining",
+    statusSeries: BACKLOG_STATUS_SERIES,
+    totalLabel: "現在の残数（未完了）",
+    totalColumnLabel: "残数",
     totalSub: "改善タブの未完了施策",
     totalAccent: "text-sky-300",
     totalCellClass: "text-sky-600",
     rowHoverClass: "hover:bg-sky-50/60",
+    publishedLabel: "公開ずみ",
     movedOutLabel: "改善外へ移動",
     emptyMessage:
       "集計がまだありません。日次スナップショット後、または /api/improvement-stats/backfill の実行後にここに表示されます。",
   },
+  requirement: {
+    title: "要求定義 完了数の推移",
+    icon: ClipboardList,
+    iconClass: "text-amber-400",
+    chartTitle: "要求定義中の件数と、要求定義完了の累計",
+    chartColor: "#f59e0b",
+    focus: "completed",
+    statusSeries: [],
+    totalLabel: "現在の要求定義中",
+    totalColumnLabel: "要求定義中",
+    totalSub: "置き場所を問わずステータスが要求定義の施策",
+    totalAccent: "text-amber-300",
+    totalCellClass: "text-amber-600",
+    rowHoverClass: "hover:bg-amber-50/60",
+    publishedLabel: "要求定義完了",
+    movedOutLabel: "未着手/調査へ戻った",
+    emptyMessage:
+      "集計がまだありません。日次スナップショット後、または /api/requirement-stats/backfill の実行後にここに表示されます。",
+  },
 };
+
+// 日付順の行から「published（完了）の累計」を日付ごとに引けるようにする。基準日は増減が無いので 0 のまま。
+function cumulativePublishedByDate(stats: DayStat[]): Map<string, number> {
+  const map = new Map<string, number>();
+  let acc = 0;
+  for (const s of stats) {
+    if (!s.isBaseline) acc += s.breakdown.published;
+    map.set(s.date, acc);
+  }
+  return map;
+}
 
 const REASON_STYLE: Record<DecreaseReason, string> = {
   published: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -88,7 +143,19 @@ const KIND_LABEL: Record<IncreaseKind, string> = {
 // 残数の推移を描くシンプルな折れ線グラフ（外部ライブラリなし・インラインSVG）
 // 横スクロールしても数値が読めるよう、y軸（目盛りの数値）はスクロール領域の外に固定で置き、
 // 折れ線だけを横スクロールさせる。両者は同じ高さ・同じ y 変換を使う。
-function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
+function TrendChart({
+  stats,
+  config,
+  cumulative,
+}: {
+  stats: DayStat[];
+  config: ViewConfig;
+  cumulative: Map<string, number>;
+}) {
+  const color = config.chartColor;
+  const statusSeries = config.statusSeries;
+  // completed のときは完了の累計を同じスケールで重ねる（残数より大きくなり得るので最大値に含める）
+  const showCompleted = config.focus === "completed";
   // 1日48px固定幅なので日数が増えると横スクロールになる。
   // 見たいのは直近なので、表示時は右端（最新日）までスクロールしておく。
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -107,7 +174,11 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
   const width = pad.left + innerW + pad.right;
   const height = pad.top + innerH + pad.bottom;
 
-  const maxTotal = Math.max(1, ...stats.map((s) => s.total));
+  const maxTotal = Math.max(
+    1,
+    ...stats.map((s) => s.total),
+    ...(showCompleted ? stats.map((s) => cumulative.get(s.date) ?? 0) : [])
+  );
   const x = (i: number) =>
     pad.left + (stats.length === 1 ? innerW / 2 : (i / (stats.length - 1)) * innerW);
   const y = (v: number) => pad.top + innerH - (v / maxTotal) * innerH;
@@ -124,9 +195,15 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
       <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-black/60">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: color }} />
-          残数
+          {config.totalColumnLabel}
         </span>
-        {STATUS_SERIES.map((series) => (
+        {showCompleted && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: COMPLETED_COLOR }} />
+            {config.publishedLabel}（累計）
+          </span>
+        )}
+        {statusSeries.map((series) => (
           <span key={series.status} className="inline-flex items-center gap-1.5">
             <span
               className="inline-block w-4 border-t-2 border-dashed"
@@ -186,8 +263,20 @@ function TrendChart({ stats, color }: { stats: DayStat[]; color: string }) {
             strokeLinecap="round"
           />
 
+          {/* 完了の累計。残数と同じ y スケールで重ねる */}
+          {showCompleted && (
+            <polyline
+              points={stats.map((s, i) => `${x(i)},${y(cumulative.get(s.date) ?? 0)}`).join(" ")}
+              fill="none"
+              stroke={COMPLETED_COLOR}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
+
           {/* 内訳（未着手 / 要求定義）の折れ線。残数と同じ y スケールで重ねる */}
-          {STATUS_SERIES.map((series) => (
+          {statusSeries.map((series) => (
             <polyline
               key={series.status}
               points={stats.map((s, i) => `${x(i)},${y(countOf(s, series.status))}`).join(" ")}
@@ -311,10 +400,13 @@ export function DailyStatsView({
   const config = VIEW_CONFIGS[target];
   const Icon = config.icon;
   const reasonLabel: Record<DecreaseReason, string> = {
-    published: "公開ずみ",
+    published: config.publishedLabel,
     movedOut: config.movedOutLabel,
     deleted: "削除",
   };
+  const statusSeries = config.statusSeries;
+  const showCompleted = config.focus === "completed";
+  const cumulative = useMemo(() => cumulativePublishedByDate(stats), [stats]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (date: string) =>
@@ -342,17 +434,21 @@ export function DailyStatsView({
         },
         { increase: 0, decrease: 0 }
       );
+    const statuses = statusSeries.map((series) => series.status);
     return {
       hasBreakdown: Object.keys(latest.statusCounts).length > 0,
       current: latest.total,
-      currentByStatus: HIGHLIGHT_STATUSES.map((st) => ({ status: st, count: countOf(latest, st) })),
+      currentByStatus: statuses.map((st) => ({ status: st, count: countOf(latest, st) })),
       // 期間の表示用（開始日は含まない日の翌日）
       windowFrom: window[0]?.date ?? latest.date,
       windowTo: latest.date,
       total: sumFlow((s) => s),
-      byStatus: HIGHLIGHT_STATUSES.map((st) => ({ status: st, ...sumFlow((s) => s.statusFlows[st]) })),
+      byStatus: statuses.map((st) => ({ status: st, ...sumFlow((s) => s.statusFlows[st]) })),
+      // 完了（published）の件数。直近1か月と全期間の累計
+      completedMonth: window.reduce((acc, s) => acc + s.breakdown.published, 0),
+      completedAll: cumulative.get(latest.date) ?? 0,
     };
-  }, [stats]);
+  }, [stats, statusSeries, cumulative]);
 
   // テーブルは新しい日付が上
   const rows = useMemo(() => [...stats].reverse(), [stats]);
@@ -377,15 +473,32 @@ export function DailyStatsView({
         </div>
       </div>
 
-      {/* サマリー: 上段=現在値（全体 / 未着手 / 要求定義）、下段=直近1か月の増減（同じ並び） */}
+      {/* サマリー: 上段=現在値（全体 / 未着手 / 要求定義）、下段=直近1か月の増減（同じ並び）
+          completed のときは 現在値 / 直近1か月の完了数 / 累計の完了数 と、直近1か月の増減 */}
       {summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <SummaryCard
-            label="現在の残数（未完了）"
+            label={config.totalLabel}
             value={`${summary.current}`}
             accent={config.totalAccent}
             sub={config.totalSub}
           />
+          {showCompleted && (
+            <>
+              <SummaryCard
+                label={`直近1か月の${config.publishedLabel}`}
+                value={`${summary.completedMonth}`}
+                accent="text-emerald-300"
+                sub={`${summary.windowFrom.slice(5)}〜${summary.windowTo.slice(5)}`}
+              />
+              <SummaryCard
+                label={`${config.publishedLabel}の累計`}
+                value={`${summary.completedAll}`}
+                accent="text-emerald-300"
+                sub="集計開始日からの合計"
+              />
+            </>
+          )}
           {summary.currentByStatus.map((c) => (
             <SummaryCard
               key={c.status}
@@ -423,7 +536,7 @@ export function DailyStatsView({
             <div className="mb-2 text-xs font-medium text-black/60">
               {config.chartTitle}
             </div>
-            <TrendChart stats={stats} color={config.chartColor} />
+            <TrendChart stats={stats} config={config} cumulative={cumulative} />
           </div>
 
           {/* 日次テーブル */}
@@ -433,12 +546,18 @@ export function DailyStatsView({
                 <tr className={theadClasses}>
                   <th className="w-8 px-2 py-2"></th>
                   <th className="px-3 py-2">日付</th>
-                  <th className="w-20 px-3 py-2 text-right">残数</th>
-                  {STATUS_SERIES.map((series) => (
+                  <th className="w-20 px-3 py-2 text-right">{config.totalColumnLabel}</th>
+                  {statusSeries.map((series) => (
                     <th key={series.status} className="w-20 px-3 py-2 text-right font-normal">
                       {series.status}
                     </th>
                   ))}
+                  {showCompleted && (
+                    <>
+                      <th className="w-24 px-3 py-2 text-right">{config.publishedLabel}</th>
+                      <th className="w-20 px-3 py-2 text-right font-normal">累計</th>
+                    </>
+                  )}
                   <th className="w-20 px-3 py-2 text-right">増加</th>
                   <th className="w-20 px-3 py-2 text-right">減少</th>
                   <th className="px-3 py-2">減少の内訳</th>
@@ -455,6 +574,7 @@ export function DailyStatsView({
                       r={r}
                       config={config}
                       reasonLabel={reasonLabel}
+                      cumulativePublished={cumulative.get(r.date) ?? 0}
                       isOpen={isOpen}
                       hasDetail={hasDetail}
                       onToggle={() => hasDetail && toggle(r.date)}
@@ -474,6 +594,7 @@ function FragmentRow({
   r,
   config,
   reasonLabel,
+  cumulativePublished,
   isOpen,
   hasDetail,
   onToggle,
@@ -481,10 +602,15 @@ function FragmentRow({
   r: DayStat;
   config: ViewConfig;
   reasonLabel: Record<DecreaseReason, string>;
+  cumulativePublished: number;
   isOpen: boolean;
   hasDetail: boolean;
   onToggle: () => void;
 }) {
+  const statusSeries = config.statusSeries;
+  const showCompleted = config.focus === "completed";
+  // 詳細行の colspan: 日付 / 残数 / 増加 / 減少 / 内訳 の5列 + 内訳ステータス列 + 完了・累計の2列
+  const detailColSpan = 5 + statusSeries.length + (showCompleted ? 2 : 0);
   return (
     <>
       <tr
@@ -514,7 +640,7 @@ function FragmentRow({
         <td className={cn("px-3 py-2 text-right font-semibold tabular-nums", config.totalCellClass)}>
           {r.total}
         </td>
-        {STATUS_SERIES.map((series) => {
+        {statusSeries.map((series) => {
           const n = countOf(r, series.status);
           return (
             <td key={series.status} className={cn("px-3 py-2 text-right tabular-nums", n > 0 ? series.cellClass : "text-black/25")}>
@@ -522,6 +648,20 @@ function FragmentRow({
             </td>
           );
         })}
+        {showCompleted && (
+          <>
+            <td className="px-3 py-2 text-right font-semibold tabular-nums">
+              {r.isBaseline ? (
+                <span className="text-black/25">—</span>
+              ) : r.breakdown.published > 0 ? (
+                <span className="text-emerald-600">{r.breakdown.published}</span>
+              ) : (
+                <span className="text-black/25">0</span>
+              )}
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums text-black/60">{cumulativePublished}</td>
+          </>
+        )}
         <td className="px-3 py-2 text-right tabular-nums">
           {r.isBaseline ? (
             <span className="text-black/25">—</span>
@@ -580,7 +720,7 @@ function FragmentRow({
       {isOpen && hasDetail && (
         <tr className="border-b border-black/5 bg-slate-50/60">
           <td></td>
-          <td colSpan={5 + STATUS_SERIES.length} className="px-3 py-3">
+          <td colSpan={detailColSpan} className="px-3 py-3">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="mb-1.5 text-[11px] font-medium text-rose-500">
