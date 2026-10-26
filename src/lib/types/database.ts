@@ -367,6 +367,7 @@ export type Database = {
       };
       requirement_daily_stats: {
         Row: {
+          scope: string;
           stat_date: string;
           total: number;
           status_counts: Record<string, number>;
@@ -383,6 +384,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          scope?: string;
           stat_date: string;
           total?: number;
           status_counts?: unknown;
@@ -399,6 +401,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          scope?: string;
           total?: number;
           status_counts?: unknown;
           status_flows?: unknown;

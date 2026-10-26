@@ -3,7 +3,8 @@
 // 「残数」の定義は集計対象ごとに STATS_TARGETS で持つ（施策一覧の各ビューと同じ母数）。
 //   - petit       : is_petit_improvement = true かつ status != 完了
 //   - improvement : 置き場所が改善（track=improvement でプチ改善/ABテストのフラグなし）かつ status != 完了
-//   - requirement : 置き場所を問わず status が要求定義以前（未着手/調査/要求定義）＝要求定義が未完了
+//   - requirement : status が要求定義以前（未着手/調査/要求定義）＝要求定義が未完了。
+//                   置き場所で絞った集計（scope = all / investment / improvement / petit）を同じ表に持つ
 //
 // 前日→当日でこの母数から抜けた施策を「減少」とし、内訳を判定する:
 //   - published : 置き場所は変わらず status が「完了」になった（＝消化完了・公開ずみ）
@@ -86,6 +87,8 @@ export type StatsTarget = {
   key: StatsTargetKey;
   // 作り置き集計テーブル名（1日1行・列構成は petit_daily_stats と同じ）
   table: "petit_daily_stats" | "improvement_daily_stats" | "requirement_daily_stats";
+  // 同じ表に複数の母数を持つときの区分（requirement_daily_stats.scope）。無ければ表は stat_date だけが主キー
+  scope?: string;
   // 残数（母集団）に入る施策か
   isInPopulation: (p: SnapProject) => boolean;
   // 母集団から抜けたが削除はされていない施策について、置き場所が変わって出て行ったか。
@@ -124,6 +127,38 @@ export function isPastRequirement(status: string | undefined): boolean {
   return statusIndex(status) > REQUIREMENT_INDEX;
 }
 
+// 要求定義の集計を置き場所で絞るときの区分。all は置き場所を問わない（ABテストも含む）。
+export type RequirementScope = "all" | "investment" | "improvement" | "petit";
+
+export const REQUIREMENT_SCOPES: { value: RequirementScope; label: string; description: string }[] = [
+  { value: "all", label: "全体", description: "置き場所を問わず" },
+  { value: "investment", label: "投資", description: "投資タブの" },
+  { value: "improvement", label: "改善", description: "改善タブの" },
+  { value: "petit", label: "プチ改善", description: "プチ改善タブの" },
+];
+
+function requirementTarget(scope: RequirementScope): StatsTarget {
+  return {
+    key: "requirement",
+    table: "requirement_daily_stats",
+    scope,
+    // 要求定義がまだ終わっていない施策（未着手/調査も「要求定義未完了」として母数に入れる）。
+    // scope が置き場所のときは、その置き場所にある施策だけ
+    isInPopulation: (p) =>
+      isRequirementPending(p.status) && (scope === "all" || placementOfSnap(p) === scope),
+    // 要求定義より後ろへ進んだ＝published（要求定義完了）。それ以外で母数から抜けた＝movedOut
+    // （選択肢外のステータス、または scope の置き場所から別タブへ移った）
+    isMovedOut: (p) => !isPastRequirement(p.status),
+  };
+}
+
+export const REQUIREMENT_TARGETS: Record<RequirementScope, StatsTarget> = {
+  all: requirementTarget("all"),
+  investment: requirementTarget("investment"),
+  improvement: requirementTarget("improvement"),
+  petit: requirementTarget("petit"),
+};
+
 export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
   petit: {
     key: "petit",
@@ -138,16 +173,20 @@ export const STATS_TARGETS: Record<StatsTargetKey, StatsTarget> = {
       placementOfSnap(p) === "improvement" && p.status !== "完了",
     isMovedOut: (p) => placementOfSnap(p) !== "improvement",
   },
-  requirement: {
-    key: "requirement",
-    table: "requirement_daily_stats",
-    // 置き場所（投資/改善/プチ改善/ABテスト）を問わず、要求定義がまだ終わっていない施策
-    // （未着手/調査も「要求定義未完了」として母数に入れる）
-    isInPopulation: (p) => isRequirementPending(p.status),
-    // 要求定義より後ろへ進んだ＝published（要求定義完了）。それ以外で母数から抜けた＝movedOut（選択肢外のステータス）
-    isMovedOut: (p) => !isPastRequirement(p.status),
-  },
+  requirement: REQUIREMENT_TARGETS.all,
 };
+
+// cron とバックフィルが更新する集計の全件（ビュー用の STATS_TARGETS と違い、scope 違いも含む）
+export const ALL_STATS_TARGETS: StatsTarget[] = [
+  STATS_TARGETS.petit,
+  STATS_TARGETS.improvement,
+  ...Object.values(REQUIREMENT_TARGETS),
+];
+
+// upsert の衝突キー。scope を持つ表は (scope, stat_date) が主キー
+export function conflictKeyOf(target: StatsTarget): string {
+  return target.scope ? "scope,stat_date" : "stat_date";
+}
 
 // snapshot.data（施策配列）を id -> project の Map に整形する。
 function toProjectMap(data: unknown): Map<string, SnapProject> {
@@ -302,6 +341,7 @@ export function computeDailyStats(
 // 集計結果を1日1行の軽量テーブルに保存し、ビューはそれだけを読む。
 
 export type DailyStatRow = {
+  scope?: string; // scope を持つ表（requirement_daily_stats）だけ
   stat_date: string;
   total: number;
   status_counts: Record<string, number>;
@@ -316,9 +356,10 @@ export type DailyStatRow = {
   decreased_items: DecreaseItem[];
 };
 
-// DayStat（計算結果） → DB行（snake_case）
-export function dayStatToRow(s: DayStat): DailyStatRow {
+// DayStat（計算結果） → DB行（snake_case）。target に scope があれば行にも付ける
+export function dayStatToRow(s: DayStat, target?: StatsTarget): DailyStatRow {
   return {
+    ...(target?.scope ? { scope: target.scope } : {}),
     stat_date: s.date,
     total: s.total,
     status_counts: s.statusCounts,
