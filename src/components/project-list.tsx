@@ -580,18 +580,18 @@ function RequirementDueDateCell({
 
 // 公開目安（上段）と公開マスト期日（下段）を1セルにまとめたセル。
 // マスト期日が未設定の行は上段だけになるので、一覧の行高は今までと変わらない。
-// 改善／プチ改善タブの日付列での並べ替え。null は優先度順（既定の並び）。
+// 改善／プチ改善タブと要求定義ビューの日付列での並べ替え。null は既定の並び（優先度順）。
 type DateSortKey = "requirement_due_date" | "target_date";
 type DateSort = { key: DateSortKey; dir: "asc" | "desc" } | null;
 
-// 未設定の日付は昇順・降順どちらでも末尾に置く。同じ日付どうしは優先度順。
+// 未設定の日付は昇順・降順どちらでも末尾に置く。同じ日付どうしは元の並び（各ビューの既定の順）のまま。
 function sortByDate(items: Project[], sort: DateSort): Project[] {
   if (!sort) return items;
   const { key, dir } = sort;
   return [...items].sort((a, b) => {
     const av = a[key];
     const bv = b[key];
-    if (av === bv || (!av && !bv)) return a.priority - b.priority;
+    if (av === bv || (!av && !bv)) return 0;
     if (!av) return 1;
     if (!bv) return -1;
     return (av < bv ? -1 : 1) * (dir === "asc" ? 1 : -1);
@@ -1020,8 +1020,9 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "requirements_incomplete">("");
   // 「要求定義未完了」で絞っている間は、各タブの表にも要求定義期日の列を出して確認・入力できるようにする
   const showRequirementDue = filterStartStatus === "requirements_incomplete";
-  // 改善／プチ改善タブの日付列の並べ替え（タブごとに独立）
+  // 改善／プチ改善タブと要求定義ビューの日付列の並べ替え（ビューごとに独立）
   const [improvementSort, setImprovementSort] = useState<DateSort>(null);
+  const [requirementSort, setRequirementSort] = useState<DateSort>(null);
   const [petitSort, setPetitSort] = useState<DateSort>(null);
   // 公開済みの月別集計。既定は直近3か月だけ出し、それより古い月はアコーディオンで畳む。
   const [showAllReleasedMonths, setShowAllReleasedMonths] = useState(false);
@@ -1175,6 +1176,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const sortedImprovementProjects = useMemo(
     () => sortByDate(improvementProjects, improvementEffectiveSort),
     [improvementProjects, improvementEffectiveSort]
+  );
+  // 要求定義ビューは要求定義期日の列が常に出ているので、effectiveSort を通さない
+  const sortedRequirementProjects = useMemo(
+    () => sortByDate(requirementProjects, requirementSort),
+    [requirementProjects, requirementSort]
   );
   const sortedPetitProjects = useMemo(
     () => sortByDate(petitProjects, petitEffectiveSort),
@@ -1661,7 +1667,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // 投資／改善ビューの表ヘッダー。
   // 列順は ProjectRow の td と対応させる（drag → タイトル … 状態 → 進行 → 備考 → メニュー）。
   // 分類とプロジェクトは行に出さない（タブと塊の見出しで分かるので、行では冗長）。
-  // sort を渡すと要求定義期日・公開目安の見出しで並べ替えられる（改善タブのみ）
+  // sort を渡すと要求定義期日・公開目安の見出しで並べ替えられる（改善タブと要求定義ビュー）
   const trackTableHead = ({
     drag = false,
     requirementDue = false,
@@ -1871,7 +1877,11 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
 
           <div className="bg-white rounded-xl border border-white/20 shadow-xl shadow-black/20 overflow-hidden">
             <table className="w-full text-sm">
-              {trackTableHead({ drag: true, requirementDue: true })}
+              {trackTableHead({
+                drag: true,
+                requirementDue: true,
+                sort: { value: requirementSort, onChange: setRequirementSort },
+              })}
               {requirementProjects.length === 0 ? (
                 <tbody>
                   <tr>
@@ -1887,12 +1897,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                   onDragEnd={handleRequirementDragEnd}
                 >
                   <SortableContext
-                    items={requirementProjects.map((p) => p.id)}
+                    items={sortedRequirementProjects.map((p) => p.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <tbody className="divide-y divide-slate-100">
-                      {requirementProjects.map((project) => (
+                      {sortedRequirementProjects.map((project) => (
                         <SortableProjectRow
+                          dragDisabled={!!requirementSort}
                           key={project.id}
                           project={project}
                           isExpanded={expandedProjectId === project.id}
