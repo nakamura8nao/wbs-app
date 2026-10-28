@@ -70,6 +70,7 @@ const VIEW_TAB_GROUPS: TabDef[][] = [
 const UNDATED_MONTH = "未設定";
 
 // ステータスフィルターの「要求定義未完了」に含めるステータス（要求定義が終わっていない施策）。
+// これ以外（要件定義以降・ABテスト中・完了）は「要求定義完了済み」。
 const REQUIREMENTS_INCOMPLETE_STATUSES = new Set<string>(["未着手", "調査", "要求定義"]);
 
 // 月別集計で最初から開いておく行数（直近3か月）。残りはアコーディオンに畳む。
@@ -1017,7 +1018,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // 要求定義ビューもタブとは別軸（ステータス横断で「いま要求定義を書いているもの」を並べる）
   const [requirementsOpen, setRequirementsOpen] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
-  const [filterStartStatus, setFilterStartStatus] = useState<"" | "requirements_incomplete">("");
+  const [filterStartStatus, setFilterStartStatus] = useState<"" | "requirements_incomplete" | "requirements_done">("");
   // 「要求定義未完了」で絞っている間は、各タブの表にも要求定義期日の列を出して確認・入力できるようにする
   const showRequirementDue = filterStartStatus === "requirements_incomplete";
   // 改善／プチ改善タブと要求定義ビューの日付列の並べ替え（ビューごとに独立）
@@ -1036,6 +1037,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
       if (!matchedAtProject && !matchedAtPhase) return false;
     }
     if (filterStartStatus === "requirements_incomplete" && !REQUIREMENTS_INCOMPLETE_STATUSES.has(p.status)) return false;
+    if (filterStartStatus === "requirements_done" && REQUIREMENTS_INCOMPLETE_STATUSES.has(p.status)) return false;
     return true;
   }, [filterMemberId, filterStartStatus, phaseAssigneesByProjectId]);
 
@@ -1797,11 +1799,12 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
           {/* ステータスフィルター */}
           <select
             value={filterStartStatus}
-            onChange={(e) => setFilterStartStatus(e.target.value as "" | "requirements_incomplete")}
+            onChange={(e) => setFilterStartStatus(e.target.value as "" | "requirements_incomplete" | "requirements_done")}
             className="h-9 rounded-lg border border-white/15 bg-white/8 px-3 text-sm text-white/70 outline-none cursor-pointer backdrop-blur-sm focus:ring-2 focus:ring-primary-400/30"
           >
             <option value="">全てのステータス</option>
             <option value="requirements_incomplete">要求定義未完了</option>
+            <option value="requirements_done">要求定義完了済み</option>
           </select>
         </div>
         <div className="flex items-center gap-3">
