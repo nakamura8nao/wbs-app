@@ -14,6 +14,7 @@ import {
   type TrendsPageResponse,
 } from "@/lib/trends";
 import { ScopeToggle } from "@/components/scope-toggle";
+import { getHolidayName } from "@/lib/holidays";
 
 const KIND_LABEL: Record<IncreaseKind, string> = { new: "新規", inflow: "流入" };
 
@@ -24,6 +25,15 @@ const SERIES = {
 } as const;
 
 const mmdd = (date: string) => date.slice(5).replace("-", "/");
+
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
+// 表の日付行に添える曜日と、土日祝かどうか（土日祝は行をグレーにする）
+function dayInfo(date: string): { weekday: string; holiday: string | undefined; isOff: boolean } {
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+  const holiday = getHolidayName(date);
+  return { weekday: WEEKDAYS[dow], holiday, isOff: dow === 0 || dow === 6 || holiday !== undefined };
+}
 
 // 週次の1点。未完了数はその週の最後の日の値、完了数はその週の合計
 type WeekPoint = {
@@ -407,12 +417,15 @@ export function TrendsView({
                 </tr>
               </thead>
               <tbody>
-                {desc.map((r) => (
-                  <tr key={r.date} className="border-b border-black/5">
-                    <td className="px-3 py-2 font-medium text-foreground">
+                {desc.map((r) => {
+                  const day = dayInfo(r.date);
+                  return (
+                  <tr key={r.date} className={cn("border-b border-black/5", day.isOff && "bg-slate-100")}>
+                    <td className="px-3 py-2 font-medium text-foreground" title={day.holiday}>
                       {r.date}
+                      <span className="ml-1 text-black/45">({day.weekday})</span>
                       {(r.backlog?.isBaseline || r.requirement?.isBaseline) && (
-                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">基準日</span>
+                        <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500">基準日</span>
                       )}
                     </td>
                     <td className={cn("border-l border-black/5 px-3 py-2 text-right font-semibold tabular-nums", SERIES.backlog.cellClass)}>
@@ -426,7 +439,8 @@ export function TrendsView({
                     <DeltaCell m={r.requirement} pick="published" tone="good" />
                     <DeltaCell m={r.requirement} pick="increase" tone="bad" />
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {/* 古い日付は TABLE_PAGE_DAYS 日ずつ足す（施策名込みの行は重いので最初は直近だけ） */}
