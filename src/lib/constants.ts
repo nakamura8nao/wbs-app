@@ -87,20 +87,20 @@ export const SIZE_OPTIONS = [
 ] as const;
 
 // 施策のトラック。施策は必ずこのどちらか1つに属する（MECE）。
-// 投資 = 将来のリターンを狙って大きな工数を投じる / 改善 = 既存機能の価値と業務効率の底上げ。
+// 投資 = 将来のリターン（大きなインパクト）狙い・基盤づくりやトライ / 改善 = 既存機能の価値を高める（KPI・業務効率・セキュリティ）。
 // short はタブなどの狭い場所での略称。
 export const TRACK_OPTIONS = [
   {
     value: "investment",
     label: "新規投資・構造改革",
     short: "投資",
-    description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策",
+    description: "将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。",
   },
   {
     value: "improvement",
     label: "継続改善・運用強化",
     short: "改善",
-    description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策",
+    description: "既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。",
   },
 ] as const;
 
@@ -115,8 +115,8 @@ export const INVESTMENT_PROGRAM_SOFT_LIMIT = 10;
 // （プチ改善の日次集計とスナップショット履歴がフラグを見ているため、列構成はそのまま残す）
 // short はタブや集計表などの狭い場所での略称。
 export const PLACEMENT_OPTIONS = [
-  { value: "investment", label: "投資（新規投資・構造改革）", short: "投資", description: "将来のリターン（インパクト）を狙って大きな工数を投じる施策" },
-  { value: "improvement", label: "改善（継続改善・運用強化）", short: "改善", description: "既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
+  { value: "investment", label: "投資（新規投資・構造改革）", short: "投資", description: "将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。" },
+  { value: "improvement", label: "改善（継続改善・運用強化）", short: "改善", description: "既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。" },
   { value: "petit", label: "プチ改善", short: "プチ改善", description: "投資・改善施策と並行して進めるサブタスク" },
   { value: "ab", label: "ABテスト", short: "ABテスト", description: "リリース前にABテストで効果を検証する施策" },
 ] as const;
