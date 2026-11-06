@@ -12,6 +12,7 @@ import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
 import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, PLACEMENT_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
 import type { Track, Placement } from "@/lib/constants";
+import { isRequirementPending } from "@/lib/daily-stats";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
 import { PhaseAssigneeSyncDialog } from "@/components/phase-assignee-sync-dialog";
 import { buildPhaseSyncCandidates, type PhaseSyncCandidate, type RoleAssignees } from "@/lib/phase-templates";
@@ -58,8 +59,8 @@ type TabDef = {
 
 const VIEW_TAB_GROUPS: TabDef[][] = [
   [
-    { key: "investment", label: "投資", icon: Rocket, title: "新規投資・構造改革：将来のリターンを狙って大きな工数を投じる施策" },
-    { key: "improvement", label: "改善", icon: Repeat, title: "継続改善・運用強化：既存機能の価値を高め、日々の成果や業務効率を底上げする施策" },
+    { key: "investment", label: "投資", icon: Rocket, title: "新規投資・構造改革：将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。" },
+    { key: "improvement", label: "改善", icon: Repeat, title: "継続改善・運用強化：既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。" },
     { key: "petit", label: "プチ改善", icon: Sparkles, title: "投資・改善施策と並行して進めるサブタスク" },
     { key: "ab", label: "ABテスト", icon: FlaskConical, title: "リリース前にABテストで効果を検証する施策" },
   ],
@@ -500,7 +501,8 @@ function MustDateCell({
 
 // 要求定義期日のインライン編集。要求定義を書き上げる自分たちの締切で、
 // 公開の日付（公開目安・公開マスト期日）とは別の軸として持つ。
-// 期日を過ぎていて、まだ終わっていない（progress が done 以外）ときだけ赤くする。
+// 期日を過ぎていて、ステータスが要求定義以前（未着手/調査/要求定義）のときだけ赤くする。
+// 要件定義より先に進んでいれば、要求定義は書き終わっているので期日超過でも赤くしない。
 function RequirementDueDateCell({
   project,
   onChange,
@@ -512,7 +514,7 @@ function RequirementDueDateCell({
   const [draftValue, setDraftValue] = useState<string | null>(project.requirement_due_date);
   const value = project.requirement_due_date;
   const overdue =
-    !!value && project.progress !== "done" && value < new Date().toLocaleDateString("sv-SE");
+    !!value && isRequirementPending(project.status) && value < new Date().toLocaleDateString("sv-SE");
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
@@ -687,7 +689,6 @@ const ProjectRow = memo(function ProjectRow({
   onPhasesChange,
   hidePriority,
   hideProgress,
-  showRequirementDue,
   showProposedDate,
   statusOptions,
   showPetitBadge,
@@ -708,8 +709,6 @@ const ProjectRow = memo(function ProjectRow({
   hidePriority?: boolean;
   // 公開済みビュー用。完了済みの行では進行状況（⏸/▶/✅）が意味を持たないので出さない
   hideProgress?: boolean;
-  // 要求定義ビュー用。要求定義を書き上げる期日の列を出す
-  showRequirementDue?: boolean;
   showProposedDate?: boolean;
   // ステータスの選択肢。既定は STATUS_OPTIONS で、ABテストタブだけ AB_STATUS_OPTIONS を渡す
   statusOptions?: readonly string[];
@@ -744,13 +743,12 @@ const ProjectRow = memo(function ProjectRow({
   }, []);
 
   // 展開パネルを表で全幅に伸ばすための列数。表示条件付きの列を足し引きして数える。
-  // 固定列 = タイトル / 公開目安 / Dir / Des / Eng / 状態 / 備考 / ケバブ = 8
+  // 固定列 = タイトル / 要求定義期日 / 公開目安 / Dir / Des / Eng / 状態 / 備考 / ケバブ = 9
   const colCount =
-    8 +
+    9 +
     (sortable ? 1 : 0) +
     (hidePriority ? 0 : 1) +
     (hideProgress ? 0 : 1) +
-    (showRequirementDue ? 1 : 0) +
     (showProposedDate ? 2 : 0);
 
   return (
@@ -806,14 +804,12 @@ const ProjectRow = memo(function ProjectRow({
           </Link>
         </span>
       </td>
-      {showRequirementDue && (
-        <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
-          <RequirementDueDateCell
-            project={project}
-            onChange={(v) => onUpdateField(project.id, { requirement_due_date: v })}
-          />
-        </td>
-      )}
+      <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
+        <RequirementDueDateCell
+          project={project}
+          onChange={(v) => onUpdateField(project.id, { requirement_due_date: v })}
+        />
+      </td>
       <td className="w-36 py-3 px-4 text-sm text-body whitespace-nowrap">
         <ReleaseDateCell project={project} onUpdateField={onUpdateField} />
       </td>
@@ -1019,8 +1015,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const [requirementsOpen, setRequirementsOpen] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>("");
   const [filterStartStatus, setFilterStartStatus] = useState<"" | "requirements_incomplete" | "requirements_done">("");
-  // 「要求定義未完了」で絞っている間は、各タブの表にも要求定義期日の列を出して確認・入力できるようにする
-  const showRequirementDue = filterStartStatus === "requirements_incomplete";
   // 改善／プチ改善タブと要求定義ビューの日付列の並べ替え（ビューごとに独立）
   const [improvementSort, setImprovementSort] = useState<DateSort>(null);
   const [requirementSort, setRequirementSort] = useState<DateSort>(null);
@@ -1168,25 +1162,18 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   const investmentProjects = useMemo(() => trackProjects.get("investment") ?? [], [trackProjects]);
   const improvementProjects = useMemo(() => trackProjects.get("improvement") ?? [], [trackProjects]);
 
-  // 日付列で並べ替えた表示順。要求定義期日の列が隠れている間は、その並べ替えを効かせない。
-  const effectiveSort = useCallback(
-    (sort: DateSort): DateSort => (sort?.key === "requirement_due_date" && !showRequirementDue ? null : sort),
-    [showRequirementDue]
-  );
-  const improvementEffectiveSort = effectiveSort(improvementSort);
-  const petitEffectiveSort = effectiveSort(petitSort);
+  // 日付列で並べ替えた表示順（要求定義期日の列はどのタブでも常に出ている）
   const sortedImprovementProjects = useMemo(
-    () => sortByDate(improvementProjects, improvementEffectiveSort),
-    [improvementProjects, improvementEffectiveSort]
+    () => sortByDate(improvementProjects, improvementSort),
+    [improvementProjects, improvementSort]
   );
-  // 要求定義ビューは要求定義期日の列が常に出ているので、effectiveSort を通さない
   const sortedRequirementProjects = useMemo(
     () => sortByDate(requirementProjects, requirementSort),
     [requirementProjects, requirementSort]
   );
   const sortedPetitProjects = useMemo(
-    () => sortByDate(petitProjects, petitEffectiveSort),
-    [petitProjects, petitEffectiveSort]
+    () => sortByDate(petitProjects, petitSort),
+    [petitProjects, petitSort]
   );
 
   // 投資ビュー：塊（プロジェクト）ごとに施策をぶら下げる。塊が空でもカードは出す
@@ -1672,22 +1659,20 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // sort を渡すと要求定義期日・公開目安の見出しで並べ替えられる（改善タブと要求定義ビュー）
   const trackTableHead = ({
     drag = false,
-    requirementDue = false,
     sort,
   }: {
     drag?: boolean;
-    requirementDue?: boolean;
     sort?: { value: DateSort; onChange: (next: DateSort) => void };
   }) => (
     <thead>
       <tr className={theadClasses}>
         {drag && <th scope="col" className="w-8 py-3 px-2"></th>}
         <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-        {requirementDue && (sort ? (
+        {sort ? (
           <DateSortHeader label="要求定義期日" sortKey="requirement_due_date" sort={sort.value} onSortChange={sort.onChange} className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500" />
         ) : (
           <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">要求定義期日</th>
-        ))}
+        )}
         {sort ? (
           <DateSortHeader label="公開目安" sortKey="target_date" sort={sort.value} onSortChange={sort.onChange} className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500" />
         ) : (
@@ -1709,7 +1694,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // 渡された items が持つ priority 値の昇順スロットを詰め替える（他の塊には触らない）。
   const investmentProjectTable = (items: Project[]) => (
     <table className="w-full text-sm">
-      {trackTableHead({ drag: true, requirementDue: showRequirementDue })}
+      {trackTableHead({ drag: true })}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -1730,7 +1715,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 onUpdateField={handleUpdateField}
                 onPhasesChange={reloadPhaseAssignees}
                 hidePriority
-                showRequirementDue={showRequirementDue}
                 members={members}
               />
             ))}
@@ -1889,7 +1873,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
             <table className="w-full text-sm">
               {trackTableHead({
                 drag: true,
-                requirementDue: true,
                 sort: { value: requirementSort, onChange: setRequirementSort },
               })}
               {requirementProjects.length === 0 ? (
@@ -1929,7 +1912,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          showRequirementDue
                           members={members}
                         />
                       ))}
@@ -1968,7 +1950,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 プロジェクト{investmentPrograms.length}件 / 施策{investmentProjects.length}件
               </span>
               <span className="text-xs text-amber-700/70">
-                将来のリターン（インパクト）を狙って大きな工数を投じる施策
+                {TRACK_OPTIONS[0].description}
               </span>
               <button
                 onClick={() => setProgramDialogOpen(true)}
@@ -2090,7 +2072,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <h3 className="text-sm font-semibold text-sky-900">継続改善・運用強化</h3>
               <span className="text-xs text-sky-700">{improvementProjects.length}件</span>
               <span className="text-xs text-sky-700/70">
-                既存機能の価値を高め、日々の成果や業務効率を底上げする施策
+                {TRACK_OPTIONS[1].description}
               </span>
               <Link
                 href="/improvement"
@@ -2106,13 +2088,12 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
             <table className="w-full text-sm">
               {trackTableHead({
                 drag: true,
-                requirementDue: showRequirementDue,
-                sort: { value: improvementEffectiveSort, onChange: setImprovementSort },
+                sort: { value: improvementSort, onChange: setImprovementSort },
               })}
               {improvementProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={showRequirementDue ? 11 : 10} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={11} className="py-16 text-center text-base text-slate-500">
                       該当する施策はありません。施策を編集して分類を変えるとこのタブに入ります。
                     </td>
                   </tr>
@@ -2127,7 +2108,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     <tbody className="divide-y divide-slate-100">
                       {sortedImprovementProjects.map((project) => (
                         <SortableProjectRow
-                          dragDisabled={!!improvementEffectiveSort}
+                          dragDisabled={!!improvementSort}
                           key={project.id}
                           project={project}
                           isExpanded={expandedProjectId === project.id}
@@ -2139,7 +2120,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          showRequirementDue={showRequirementDue}
                           members={members}
                         />
                       ))}
@@ -2247,6 +2227,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <thead>
                 <tr className={theadClasses}>
                   <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+                  <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">要求定義期日</th>
                   <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">公開日</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -2260,7 +2241,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <tbody className="divide-y divide-slate-100">
                 {releasedProjects.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={10} className="py-16 text-center text-base text-slate-500">
                       公開済みの施策はありません
                     </td>
                   </tr>
@@ -2318,10 +2299,8 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 <tr className={theadClasses}>
                   <th scope="col" className="w-8 py-3 px-2"></th>
                   <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                  {showRequirementDue && (
-                    <DateSortHeader label="要求定義期日" sortKey="requirement_due_date" sort={petitEffectiveSort} onSortChange={setPetitSort} className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500" />
-                  )}
-                  <DateSortHeader label="公開目安" sortKey="target_date" sort={petitEffectiveSort} onSortChange={setPetitSort} className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500" />
+                  <DateSortHeader label="要求定義期日" sortKey="requirement_due_date" sort={petitSort} onSortChange={setPetitSort} className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500" />
+                  <DateSortHeader label="公開目安" sortKey="target_date" sort={petitSort} onSortChange={setPetitSort} className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500" />
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Eng</th>
@@ -2334,7 +2313,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               {petitProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={showRequirementDue ? 11 : 10} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={11} className="py-16 text-center text-base text-slate-500">
                       プチ改善タスクはまだありません。施策の編集または行メニューの「プチ改善に移動」で追加できます。
                     </td>
                   </tr>
@@ -2352,7 +2331,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                     <tbody className="divide-y divide-slate-100">
                       {sortedPetitProjects.map((project) => (
                         <SortableProjectRow
-                          dragDisabled={!!petitEffectiveSort}
+                          dragDisabled={!!petitSort}
                           key={project.id}
                           project={project}
                           isExpanded={expandedProjectId === project.id}
@@ -2364,7 +2343,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          showRequirementDue={showRequirementDue}
                           members={members}
                         />
                       ))}
@@ -2395,9 +2373,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                 <tr className={theadClasses}>
                   <th scope="col" className="w-8 py-3 px-2"></th>
                   <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
-                  {showRequirementDue && (
-                    <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">要求定義期日</th>
-                  )}
+                  <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">要求定義期日</th>
                   <th scope="col" className="w-36 py-3 px-4 text-left text-xs font-medium text-slate-500">公開目安</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Dir</th>
                   <th scope="col" className="w-24 py-3 px-4 text-left text-xs font-medium text-slate-500">Des</th>
@@ -2411,7 +2387,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               {abProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={showRequirementDue ? 11 : 10} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={11} className="py-16 text-center text-base text-slate-500">
                       ABテスト施策はまだありません。施策の編集または行メニューの「ABテストに移動」で追加できます。
                     </td>
                   </tr>
@@ -2440,7 +2416,6 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
-                          showRequirementDue={showRequirementDue}
                           statusOptions={AB_STATUS_OPTIONS}
                           members={members}
                         />
