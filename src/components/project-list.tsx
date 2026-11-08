@@ -6,11 +6,12 @@ import { ProjectDialog } from "@/components/project-dialog";
 import { ProgressIcon } from "@/components/progress-icon";
 import { PhasePanel } from "@/components/phase-panel";
 import { NotesContent } from "@/components/notes-content";
-import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Target, CalendarClock, Plus, ChartGantt, ClipboardList, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { GroupLv2Icon } from "@/components/group-icon";
+import { ChevronDown, ChevronRight, ExternalLink, EllipsisVertical, BookOpen, Pencil, Copy, Trash2, Pin, Sparkles, FlaskConical, TrendingUp, Rocket, Repeat, Target, CalendarClock, Plus, ChartGantt, ClipboardList, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 const GanttChart = lazy(() => import("@/components/gantt-chart").then((m) => ({ default: m.GanttChart })));
-import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, PLACEMENT_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, placementOf, placementToFields } from "@/lib/constants";
+import { STATUS_OPTIONS, AB_STATUS_OPTIONS, AB_TEST_STATUS, PROGRESS_OPTIONS, TRACK_OPTIONS, PLACEMENT_OPTIONS, GROUP_LV3_OPTIONS, INVESTMENT_PROGRAM_SOFT_LIMIT, TRACK_GUIDELINE_URL, placementOf, placementToFields } from "@/lib/constants";
 import type { Track, Placement } from "@/lib/constants";
 import { isRequirementPending } from "@/lib/daily-stats";
 import { InvestmentProgramDialog } from "@/components/investment-program-dialog";
@@ -59,8 +60,8 @@ type TabDef = {
 
 const VIEW_TAB_GROUPS: TabDef[][] = [
   [
-    { key: "investment", label: "投資", icon: Rocket, title: "新規投資・構造改革：将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。" },
-    { key: "improvement", label: "改善", icon: Repeat, title: "継続改善・運用強化：既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。" },
+    { key: "investment", label: "投資", icon: Rocket, title: "新規投資・構造改革：売上アップにつながる道筋はまだ見えていないが、可能性がありそうな施策。または、今の仕組みを止めて別の仕組みに入れ替える施策。" },
+    { key: "improvement", label: "改善", icon: Repeat, title: "継続改善・運用強化：売上アップにつながる道筋が見えている施策。または、今の仕組みに手を入れて利益を守る施策。" },
     { key: "petit", label: "プチ改善", icon: Sparkles, title: "投資・改善施策と並行して進めるサブタスク" },
     { key: "ab", label: "ABテスト", icon: FlaskConical, title: "リリース前にABテストで効果を検証する施策" },
   ],
@@ -584,20 +585,42 @@ function RequirementDueDateCell({
 // 公開目安（上段）と公開マスト期日（下段）を1セルにまとめたセル。
 // マスト期日が未設定の行は上段だけになるので、一覧の行高は今までと変わらない。
 // 改善／プチ改善タブと要求定義ビューの日付列での並べ替え。null は既定の並び（優先度順）。
-type DateSortKey = "requirement_due_date" | "target_date";
+// "group" は事業の3段目（領域）。選択肢の定義順（集客→カウンター相談→…→保守）で並べる
+type DateSortKey = "requirement_due_date" | "target_date" | "group";
 type DateSort = { key: DateSortKey; dir: "asc" | "desc" } | null;
 
-// 未設定の日付は昇順・降順どちらでも末尾に置く。同じ日付どうしは元の並び（各ビューの既定の順）のまま。
+// 領域の並び順。lv3 の定義順、lv3 が無ければ lv2 の定義順の後ろ、どちらも無ければ末尾
+const GROUP_LV3_ORDER = GROUP_LV3_OPTIONS.map((o) => o.value as string);
+function groupRank(p: Project): number {
+  if (p.group_lv3) {
+    const i = GROUP_LV3_ORDER.indexOf(p.group_lv3);
+    return i === -1 ? GROUP_LV3_ORDER.length : i;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+// 未設定（日付なし・領域なし）は昇順・降順どちらでも末尾に置く。同じ値どうしは元の並び（各ビューの既定の順）のまま。
 function sortByDate(items: Project[], sort: DateSort): Project[] {
   if (!sort) return items;
   const { key, dir } = sort;
+  const sign = dir === "asc" ? 1 : -1;
+  if (key === "group") {
+    return [...items].sort((a, b) => {
+      const ar = groupRank(a);
+      const br = groupRank(b);
+      if (ar === br) return 0;
+      if (ar === Number.MAX_SAFE_INTEGER) return 1;
+      if (br === Number.MAX_SAFE_INTEGER) return -1;
+      return (ar - br) * sign;
+    });
+  }
   return [...items].sort((a, b) => {
     const av = a[key];
     const bv = b[key];
     if (av === bv || (!av && !bv)) return 0;
     if (!av) return 1;
     if (!bv) return -1;
-    return (av < bv ? -1 : 1) * (dir === "asc" ? 1 : -1);
+    return (av < bv ? -1 : 1) * sign;
   });
 }
 
@@ -630,7 +653,7 @@ function DateSortHeader({
       <button
         type="button"
         onClick={() => onSortChange(nextDateSort(sort, sortKey))}
-        data-tooltip="クリックで昇順 → 降順 → 優先度順。並べ替え中はドラッグで動かせません"
+        data-tooltip={sortKey === "group" ? "クリックで領域順 → 逆順 → 優先度順。並べ替え中はドラッグで動かせません" : "クリックで昇順 → 降順 → 優先度順。並べ替え中はドラッグで動かせません"}
         className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-slate-800", active && "text-slate-800")}
       >
         {label}
@@ -676,6 +699,22 @@ function ReleaseDateCell({
   );
 }
 
+// 事業の列。lv2 のアイコン＋lv3 を出し、吹き出しで lv1/lv2/lv3 とざっくりKPI を見せる。
+// lv3 が無いときは lv2、それも無ければ未設定。
+function GroupCell({ project }: { project: Project }) {
+  const label = project.group_lv3 ?? project.group_lv2;
+  if (!label) return <EmptyPlaceholder />;
+  const def = project.group_lv3 ? GROUP_LV3_OPTIONS.find((o) => o.value === project.group_lv3) : undefined;
+  const path = [project.group_lv1, project.group_lv2, project.group_lv3].filter(Boolean).join(" / ");
+  const tooltip = def?.kpi ? `${path}（KPI: ${def.kpi}）` : path;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-slate-700" data-tooltip={tooltip}>
+      {project.group_lv2 && <GroupLv2Icon value={project.group_lv2} size={13} />}
+      {label}
+    </span>
+  );
+}
+
 // 通常の行（D&Dなし）。公開済みビューで使い、SortableProjectRow のベースにもなる。
 const ProjectRow = memo(function ProjectRow({
   project,
@@ -693,6 +732,7 @@ const ProjectRow = memo(function ProjectRow({
   statusOptions,
   showPetitBadge,
   showAbBadge,
+  showGroup,
   members,
   sortable,
 }: {
@@ -713,6 +753,8 @@ const ProjectRow = memo(function ProjectRow({
   // ステータスの選択肢。既定は STATUS_OPTIONS で、ABテストタブだけ AB_STATUS_OPTIONS を渡す
   statusOptions?: readonly string[];
   showPetitBadge?: boolean;
+  // 事業の列（lv2 のアイコン＋lv3）をタイトルの右に出す。改善タブで使う
+  showGroup?: boolean;
   showAbBadge?: boolean;
   members: Member[];
   // ドラッグ並び替え対応（プチ改善ビューなどで使用）。渡されると先頭にドラッグハンドル列を表示する。
@@ -747,6 +789,7 @@ const ProjectRow = memo(function ProjectRow({
   const colCount =
     9 +
     (sortable ? 1 : 0) +
+    (showGroup ? 1 : 0) +
     (hidePriority ? 0 : 1) +
     (hideProgress ? 0 : 1) +
     (showProposedDate ? 2 : 0);
@@ -804,6 +847,11 @@ const ProjectRow = memo(function ProjectRow({
           </Link>
         </span>
       </td>
+      {showGroup && (
+        <td className="w-32 py-3 px-4 text-xs text-body whitespace-nowrap">
+          <GroupCell project={project} />
+        </td>
+      )}
       <td className="w-32 py-3 px-4 text-sm text-body whitespace-nowrap">
         <RequirementDueDateCell
           project={project}
@@ -1659,15 +1707,23 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
   // sort を渡すと要求定義期日・公開目安の見出しで並べ替えられる（改善タブと要求定義ビュー）
   const trackTableHead = ({
     drag = false,
+    group = false,
     sort,
   }: {
     drag?: boolean;
+    // 事業の列（領域）を出す。sort があれば領域順でも並べ替えられる
+    group?: boolean;
     sort?: { value: DateSort; onChange: (next: DateSort) => void };
   }) => (
     <thead>
       <tr className={theadClasses}>
         {drag && <th scope="col" className="w-8 py-3 px-2"></th>}
         <th scope="col" className="min-w-[240px] py-3 px-4 text-left text-xs font-medium text-slate-500">タイトル</th>
+        {group && (sort ? (
+          <DateSortHeader label="領域" sortKey="group" sort={sort.value} onSortChange={sort.onChange} className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500" />
+        ) : (
+          <th scope="col" className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500">領域</th>
+        ))}
         {sort ? (
           <DateSortHeader label="要求定義期日" sortKey="requirement_due_date" sort={sort.value} onSortChange={sort.onChange} className="w-32 py-3 px-4 text-left text-xs font-medium text-slate-500" />
         ) : (
@@ -1952,6 +2008,16 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <span className="text-xs text-amber-700/70">
                 {TRACK_OPTIONS[0].description}
               </span>
+              <a
+                href={TRACK_GUIDELINE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-amber-800 underline decoration-amber-300 underline-offset-2 hover:decoration-amber-600"
+                title="投資と改善の分け方（判定フロー・具体例）"
+              >
+                <BookOpen size={12} />
+                分け方の詳細
+              </a>
               <button
                 onClick={() => setProgramDialogOpen(true)}
                 className="ml-auto flex items-center gap-1 rounded-md border border-amber-300 bg-white/60 px-2 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-white cursor-pointer"
@@ -2074,6 +2140,16 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
               <span className="text-xs text-sky-700/70">
                 {TRACK_OPTIONS[1].description}
               </span>
+              <a
+                href={TRACK_GUIDELINE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-sky-800 underline decoration-sky-300 underline-offset-2 hover:decoration-sky-600"
+                title="投資と改善の分け方（判定フロー・具体例）"
+              >
+                <BookOpen size={12} />
+                分け方の詳細
+              </a>
               <Link
                 href="/improvement"
                 className="ml-auto flex items-center gap-1 rounded-md border border-sky-300 bg-white/60 px-2 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-white"
@@ -2088,12 +2164,13 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
             <table className="w-full text-sm">
               {trackTableHead({
                 drag: true,
+                group: true,
                 sort: { value: improvementSort, onChange: setImprovementSort },
               })}
               {improvementProjects.length === 0 ? (
                 <tbody>
                   <tr>
-                    <td colSpan={11} className="py-16 text-center text-base text-slate-500">
+                    <td colSpan={12} className="py-16 text-center text-base text-slate-500">
                       該当する施策はありません。施策を編集して分類を変えるとこのタブに入ります。
                     </td>
                   </tr>
@@ -2120,6 +2197,7 @@ export function ProjectList({ initialProjects, initialPhaseAssignees, initialInv
                           onUpdateField={handleUpdateField}
                           onPhasesChange={reloadPhaseAssignees}
                           hidePriority
+                          showGroup
                           members={members}
                         />
                       ))}

@@ -15,17 +15,23 @@ export const GROUP_LV2_OPTIONS = [
   { value: "保守", parent: "保守", icon: "Wrench", color: "text-orange-500" },
 ] as const;
 
+// lv3 は「どの持ち場のKPIを狙うか」で付ける（画面の場所ではない）。kpi は改善タブの見出しに出す目安。
 export const GROUP_LV3_OPTIONS = [
-  { value: "工務店向け", parent: "SaaS", icon: "Building2" },
-  { value: "不動産事業者向け", parent: "SaaS", icon: "Building" },
-  { value: "集客", parent: "カウンター・フェア", icon: "Megaphone" },
-  { value: "カウンター相談", parent: "カウンター・フェア", icon: "MessageCircle" },
-  { value: "フェア当日", parent: "カウンター・フェア", icon: "CalendarCheck" },
-  { value: "フォロー", parent: "カウンター・フェア", icon: "Mail" },
-  { value: "周辺事務", parent: "カウンター・フェア", icon: "ClipboardList" },
-  { value: "イエタテ", parent: "メディア", icon: "Home" },
-  { value: "オウチーノ", parent: "メディア", icon: "Search" },
-  { value: "保守", parent: "保守", icon: "Settings" },
+  { value: "工務店向け", parent: "SaaS", icon: "Building2", kpi: "" },
+  { value: "不動産事業者向け", parent: "SaaS", icon: "Building", kpi: "" },
+  { value: "集客", parent: "カウンター・フェア", icon: "Megaphone", kpi: "予約数" },
+  { value: "カウンター相談", parent: "カウンター・フェア", icon: "MessageCircle", kpi: "紹介数" },
+  { value: "フェア当日", parent: "カウンター・フェア", icon: "CalendarCheck", kpi: "来場・初回アンケート回答" },
+  { value: "フォロー", parent: "カウンター・フェア", icon: "Mail", kpi: "成約・継続" },
+  { value: "周辺事務", parent: "カウンター・フェア", icon: "ClipboardList", kpi: "業務の手間" },
+  // メディアは「狙うKPI」で割る。イエタテ／オウチーノは媒体名でKPIが割れないので、
+  // 新規の施策には下の3つを使う（既存データの互換のため媒体名も残している）。
+  { value: "流入", parent: "メディア", icon: "Eye", kpi: "PV・UU" },
+  { value: "送客", parent: "メディア", icon: "ArrowRightLeft", kpi: "カウンター・フェアへの予約" },
+  { value: "メディアCV", parent: "メディア", icon: "MousePointerClick", kpi: "住宅会社への反響" },
+  { value: "イエタテ", parent: "メディア", icon: "Home", kpi: "" },
+  { value: "オウチーノ", parent: "メディア", icon: "Search", kpi: "" },
+  { value: "保守", parent: "保守", icon: "Settings", kpi: "守り（障害・脆弱性）" },
 ] as const;
 
 // lv1 を選択したら lv2 の選択肢を絞る
@@ -87,20 +93,24 @@ export const SIZE_OPTIONS = [
 ] as const;
 
 // 施策のトラック。施策は必ずこのどちらか1つに属する（MECE）。
-// 投資 = 将来のリターン（大きなインパクト）狙い・基盤づくりやトライ / 改善 = 既存機能の価値を高める（KPI・業務効率・セキュリティ）。
+// 分ける軸は「売上アップへの道筋が見えているか」の1本（規模や工数では分けない）。
+// 問1 投資施策の開始時マイルストンなら投資のまま / 問2 利益を守る施策は入れ替えなら投資・手入れなら改善 /
+// 問3 売上までの裏付けのない仮説が2つ以上なら投資。詳しい判定フローと具体例は TRACK_GUIDELINE_URL。
 // short はタブなどの狭い場所での略称。
+export const TRACK_GUIDELINE_URL = "https://claude.ai/artifact/Ec9hJxy2Lck6nxTo2xraCA";
+
 export const TRACK_OPTIONS = [
   {
     value: "investment",
     label: "新規投資・構造改革",
     short: "投資",
-    description: "将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。",
+    description: "売上アップにつながる道筋はまだ見えていないが、可能性がありそうな施策。または、今の仕組みを止めて別の仕組みに入れ替える施策。",
   },
   {
     value: "improvement",
     label: "継続改善・運用強化",
     short: "改善",
-    description: "既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。",
+    description: "売上アップにつながる道筋が見えている施策。または、今の仕組みに手を入れて利益を守る施策。",
   },
 ] as const;
 
@@ -115,8 +125,8 @@ export const INVESTMENT_PROGRAM_SOFT_LIMIT = 10;
 // （プチ改善の日次集計とスナップショット履歴がフラグを見ているため、列構成はそのまま残す）
 // short はタブや集計表などの狭い場所での略称。
 export const PLACEMENT_OPTIONS = [
-  { value: "investment", label: "投資（新規投資・構造改革）", short: "投資", description: "将来のリターン（大きなインパクト）を狙って行う施策。KPI改善のための基盤となる仕組みづくりや、新たな可能性を見つけるトライ。" },
-  { value: "improvement", label: "改善（継続改善・運用強化）", short: "改善", description: "既存機能の価値を高める施策。直接的なKPI改善、業務効率改善、セキュリティ改善など。" },
+  { value: "investment", label: "投資（新規投資・構造改革）", short: "投資", description: "売上アップにつながる道筋はまだ見えていないが、可能性がありそうな施策。または、今の仕組みを止めて別の仕組みに入れ替える施策。" },
+  { value: "improvement", label: "改善（継続改善・運用強化）", short: "改善", description: "売上アップにつながる道筋が見えている施策。または、今の仕組みに手を入れて利益を守る施策。" },
   { value: "petit", label: "プチ改善", short: "プチ改善", description: "投資・改善施策と並行して進めるサブタスク" },
   { value: "ab", label: "ABテスト", short: "ABテスト", description: "リリース前にABテストで効果を検証する施策" },
 ] as const;

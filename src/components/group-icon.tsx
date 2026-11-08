@@ -13,6 +13,9 @@ import {
   Home,
   Search,
   Settings,
+  Eye,
+  ArrowRightLeft,
+  MousePointerClick,
   type LucideIcon,
 } from "lucide-react";
 import { GROUP_LV2_OPTIONS, GROUP_LV3_OPTIONS } from "@/lib/constants";
@@ -32,6 +35,9 @@ const iconMap: Record<string, LucideIcon> = {
   Home,
   Search,
   Settings,
+  Eye,
+  ArrowRightLeft,
+  MousePointerClick,
 };
 
 export function GroupLv2Icon({
