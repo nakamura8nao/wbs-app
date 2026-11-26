@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/header";
 import { daysBefore, TABLE_PAGE_DAYS } from "@/lib/trends";
-import { fetchTrendRowsFull, fetchTrendRowsLight } from "@/lib/trends-query";
+import { fetchTrendRowsFull, fetchTrendRowsLight, fetchWeekPlan } from "@/lib/trends-query";
 import { TrendsView } from "@/components/trends-view";
 
 export default async function TrendsPage() {
@@ -17,7 +17,10 @@ export default async function TrendsPage() {
 
   // グラフ・サマリーは数字だけの行を全期間読む（軽い）。
   // 表は施策名の JSON 込みなので直近 TABLE_PAGE_DAYS 日だけ読み、残りは「もっと見る」で /api/trends から足す。
-  const rowsByScope = await fetchTrendRowsLight(supabase);
+  const [rowsByScope, weekPlan] = await Promise.all([
+    fetchTrendRowsLight(supabase),
+    fetchWeekPlan(supabase),
+  ]);
   const latest = rowsByScope.all[rowsByScope.all.length - 1]?.date;
   const tableFrom = latest ? daysBefore(latest, TABLE_PAGE_DAYS - 1) : null;
   const tableRowsByScope = tableFrom
@@ -32,6 +35,7 @@ export default async function TrendsPage() {
           rowsByScope={rowsByScope}
           initialTableRowsByScope={tableRowsByScope}
           initialTableFrom={tableFrom}
+          weekPlan={weekPlan}
         />
       </main>
     </div>

@@ -5,7 +5,9 @@
 // グラフとサマリーは数字だけの軽い行を全期間読む。
 
 import type { DailyStatRow, IncreaseKind, StatsScope } from "@/lib/daily-stats";
-import { STATS_SCOPES } from "@/lib/daily-stats";
+import { isPastRequirement, STATS_SCOPES } from "@/lib/daily-stats";
+import { placementOf, type Placement } from "@/lib/constants";
+import { addDays, weekStartOf } from "@/lib/weeks";
 
 // 表を一度に出す日数（初期表示と「もっと見る」1回ぶん）
 export const TABLE_PAGE_DAYS = 30;
@@ -87,3 +89,79 @@ export type TrendsPageResponse = {
   from: string; // 読んだ範囲（from 以上 before 未満）
   before: string;
 };
+
+// ── 今週の予定（表の下に出す一覧） ─────────────────────────────
+// 完了予定＝公開目安が今週の施策、要求定義完了予定＝要求定義期日が今週の施策。
+// 済んだものも消さずに「済」を付けて残す（週の途中で、予定どおり進んだかを見るため）。
+
+export type WeekPlanSource = {
+  id: string;
+  title: string;
+  status: string;
+  track: string;
+  is_petit_improvement: boolean;
+  is_ab_test: boolean;
+  target_date: string | null;
+  target_date_tentative: boolean;
+  requirement_due_date: string | null;
+  director?: { display_name: string } | { display_name: string }[] | null;
+};
+
+export type WeekPlanItem = {
+  id: string;
+  title: string;
+  date: string; // 予定日（公開目安 or 要求定義期日）
+  tentative: boolean; // 公開目安が仮
+  status: string;
+  placement: Placement;
+  director: string | null;
+  done: boolean; // もう済んだ（完了 / 要求定義より先へ進んだ）
+};
+
+export type WeekPlan = {
+  today: string;
+  weekStart: string; // 月曜
+  weekEnd: string; // 日曜
+  release: WeekPlanItem[]; // 今週の完了予定
+  requirement: WeekPlanItem[]; // 今週の要求定義完了予定
+};
+
+// 日本時間の今日（YYYY-MM-DD）
+export function todayJst(now: Date = new Date()): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export function buildWeekPlan(projects: WeekPlanSource[], today: string): WeekPlan {
+  const weekStart = weekStartOf(today);
+  const weekEnd = addDays(weekStart, 6);
+  const inWeek = (d: string | null): d is string => d !== null && d >= weekStart && d <= weekEnd;
+  const item = (p: WeekPlanSource, date: string, tentative: boolean, done: boolean): WeekPlanItem => {
+    const director = Array.isArray(p.director) ? p.director[0] : p.director;
+    return {
+      id: p.id,
+      title: p.title,
+      date,
+      tentative,
+      status: p.status,
+      placement: placementOf(p),
+      director: director?.display_name ?? null,
+      done,
+    };
+  };
+  const byDate = (a: WeekPlanItem, b: WeekPlanItem) =>
+    a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ja");
+
+  return {
+    today,
+    weekStart,
+    weekEnd,
+    release: projects
+      .filter((p) => inWeek(p.target_date))
+      .map((p) => item(p, p.target_date!, p.target_date_tentative, p.status === "完了"))
+      .sort(byDate),
+    requirement: projects
+      .filter((p) => inWeek(p.requirement_due_date))
+      .map((p) => item(p, p.requirement_due_date!, false, isPastRequirement(p.status)))
+      .sort(byDate),
+  };
+}
