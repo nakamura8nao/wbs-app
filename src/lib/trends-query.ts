@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildRowsByScope,
+  buildWeekPlan,
+  todayJst,
   TREND_FULL_COLUMNS,
   TREND_LIGHT_COLUMNS,
   type TrendRowsByScope,
+  type WeekPlan,
+  type WeekPlanSource,
 } from "@/lib/trends";
 
 // 推移ページの集計行の読み込み。ログインユーザーのクライアント（RLS で select のみ）で呼ぶ。
@@ -33,4 +37,18 @@ export async function fetchTrendRowsFull(
     })
   );
   return buildRowsByScope(backlog.data ?? [], requirement.data ?? []);
+}
+
+// 今週（月〜日・日本時間）に公開目安か要求定義期日がある施策。表の下の「今週の予定」用
+export async function fetchWeekPlan(supabase: SupabaseClient): Promise<WeekPlan> {
+  const empty = buildWeekPlan([], todayJst());
+  const { data } = await supabase
+    .from("projects")
+    .select(
+      "id, title, status, track, is_petit_improvement, is_ab_test, target_date, target_date_tentative, requirement_due_date, director:members!projects_director_id_fkey(display_name)"
+    )
+    .or(
+      `and(target_date.gte.${empty.weekStart},target_date.lte.${empty.weekEnd}),and(requirement_due_date.gte.${empty.weekStart},requirement_due_date.lte.${empty.weekEnd})`
+    );
+  return buildWeekPlan((data ?? []) as WeekPlanSource[], empty.today);
 }

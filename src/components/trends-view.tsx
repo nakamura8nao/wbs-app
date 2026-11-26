@@ -12,7 +12,10 @@ import {
   type TrendRow,
   type TrendRowsByScope,
   type TrendsPageResponse,
+  type WeekPlan,
+  type WeekPlanItem,
 } from "@/lib/trends";
+import { placementShortLabel } from "@/lib/constants";
 import { ScopeToggle } from "@/components/scope-toggle";
 import { getHolidayName } from "@/lib/holidays";
 
@@ -282,10 +285,76 @@ function DeltaCell({ m, pick, tone }: { m: TrendMetric | null; pick: "published"
   );
 }
 
+// 今週の予定の1かたまり（完了予定 / 要求定義完了予定）。済んだ施策は「済」を付けて薄くする
+function WeekPlanList({
+  title,
+  dateLabel,
+  items,
+  today,
+  accentClass,
+}: {
+  title: string;
+  dateLabel: string;
+  items: WeekPlanItem[];
+  today: string;
+  accentClass: string;
+}) {
+  const doneCount = items.filter((it) => it.done).length;
+  return (
+    <div className="min-w-0 flex-1 p-4">
+      <div className="mb-2 flex items-baseline gap-2 text-xs">
+        <span className={cn("font-medium", accentClass)}>{title}</span>
+        <span className="tabular-nums text-black/50">
+          {items.length}件{items.length > 0 && `（うち済 ${doneCount}）`}
+        </span>
+        <span className="text-[11px] text-black/40">{dateLabel}が今週の施策</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="py-3 text-xs text-black/35">今週の予定はありません</div>
+      ) : (
+        <ul className="divide-y divide-black/5 text-sm">
+          {items.map((it) => {
+            const day = dayInfo(it.date);
+            const overdue = !it.done && it.date < today;
+            return (
+              <li key={it.id} className="flex items-start gap-2 py-1.5">
+                <span className={cn("w-16 shrink-0 tabular-nums", overdue ? "font-medium text-rose-500" : "text-black/55")}>
+                  {mmdd(it.date)}
+                  <span className="ml-0.5 text-[11px]">({day.weekday})</span>
+                </span>
+                <Link
+                  href={`/projects/${it.id}`}
+                  className={cn("min-w-0 flex-1 break-words underline-offset-2 hover:underline", it.done ? "text-black/40" : "text-foreground")}
+                >
+                  {it.title}
+                  {it.tentative && <span className="ml-1 text-[11px] text-black/40">（仮）</span>}
+                </Link>
+                {it.director && <span className="shrink-0 text-[11px] text-black/45">{it.director}</span>}
+                <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  {placementShortLabel(it.placement)}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 text-[10px]",
+                    it.done ? "bg-emerald-50 text-emerald-700" : overdue ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-600"
+                  )}
+                >
+                  {it.done ? `済・${it.status}` : it.status}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function TrendsView({
   rowsByScope,
   initialTableRowsByScope,
   initialTableFrom,
+  weekPlan,
 }: {
   // 数字だけの全期間（グラフ・サマリー用）
   rowsByScope: TrendRowsByScope;
@@ -293,6 +362,8 @@ export function TrendsView({
   initialTableRowsByScope: TrendRowsByScope;
   // 表に読み込み済みの最古の日付（これより前が未読）。null は全期間読み込み済み
   initialTableFrom: string | null;
+  // 今週（月〜日）に公開目安・要求定義期日がある施策。表の下に出す
+  weekPlan: WeekPlan;
 }) {
   const [scope, setScope] = useState<StatsScope>("all");
   const rows = useMemo(() => rowsByScope[scope] ?? [], [rowsByScope, scope]);
@@ -353,6 +424,10 @@ export function TrendsView({
   // 表は新しい日が上
   const desc = useMemo(() => [...(tableRowsByScope[scope] ?? [])].reverse(), [tableRowsByScope, scope]);
   const weeks = useMemo(() => toWeeks(rows), [rows]);
+  // 今週の予定も上のトグル（全体／投資／改善／プチ改善）で絞る
+  const inScope = (it: WeekPlanItem) => scope === "all" || it.placement === scope;
+  const weekRelease = weekPlan.release.filter(inScope);
+  const weekRequirement = weekPlan.requirement.filter(inScope);
   const thead = "border-b border-black/5 text-left text-[11px] font-medium text-black/60";
 
   return (
@@ -458,6 +533,19 @@ export function TrendsView({
                 {loadError && <span className="text-xs text-rose-500">{loadError}</span>}
               </div>
             )}
+          </div>
+
+          <div className="rounded-xl border border-black/5 bg-white">
+            <div className="flex flex-wrap items-baseline gap-x-3 border-b border-black/5 px-4 py-2 text-xs">
+              <span className="font-medium text-black/60">
+                今週の予定（{mmdd(weekPlan.weekStart)}〜{mmdd(weekPlan.weekEnd)}・{scopeLabel}）
+              </span>
+              <span className="text-[11px] text-black/40">今の施策の日付で出す（毎朝の集計ではなく開いた時点）。赤は日付を過ぎて未済</span>
+            </div>
+            <div className="flex flex-col divide-y divide-black/5 lg:flex-row lg:divide-x lg:divide-y-0">
+              <WeekPlanList title="今週の完了予定" dateLabel="公開目安" items={weekRelease} today={weekPlan.today} accentClass="text-sky-700" />
+              <WeekPlanList title="今週の要求定義完了予定" dateLabel="要求定義期日" items={weekRequirement} today={weekPlan.today} accentClass="text-amber-700" />
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
